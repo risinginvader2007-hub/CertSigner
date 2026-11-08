@@ -182,7 +182,7 @@ final class RepositoryStore: ObservableObject {
         AppLog.info("Downloading \(app.name) \(build.version) from \(repo.name): \(build.downloadURL.absoluteString)")
 
         downloadTasks[key] = Task { [weak self] in
-            let downloader = FileDownloader { received, expected in
+            let downloader = FileDownloader(log: { AppLog.info($0) }) { received, expected in
                 Task { @MainActor [weak self] in
                     guard var state = self?.downloads[key] else { return }
                     state.received = received
@@ -239,100 +239,6 @@ final class RepositoryStore: ObservableObject {
         encoder.dateEncodingStrategy = .iso8601
         if let data = try? encoder.encode(repositories) {
             try? data.write(to: indexURL, options: .atomic)
-        }
-    }
-}
-
-/// One file download with progress and cancellation, finishing into a temp `.ipa`.
-final class FileDownloader: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
-    typealias ProgressHandler = (_ received: Int64, _ expected: Int64?) -> Void
-
-    private let onProgress: ProgressHandler
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<URL, Error>?
-    private var session: URLSession?
-    private var task: URLSessionDownloadTask?
-    private var finished = false
-    private var cancelled = false
-    private var lastReport = Date.distantPast
-
-    init(onProgress: @escaping ProgressHandler) {
-        self.onProgress = onProgress
-    }
-
-    func start(_ url: URL) async throws -> URL {
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
-                lock.lock()
-                if cancelled {
-                    lock.unlock()
-                    continuation.resume(throwing: CancellationError())
-                    return
-                }
-                self.continuation = continuation
-                let configuration = URLSessionConfiguration.default
-                configuration.timeoutIntervalForRequest = 60
-                let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
-                let task = session.downloadTask(with: URLRequest(url: url))
-                self.session = session
-                self.task = task
-                lock.unlock()
-                task.resume()
-            }
-        } onCancel: {
-            self.cancel()
-        }
-    }
-
-    func cancel() {
-        lock.lock()
-        cancelled = true
-        let task = self.task
-        lock.unlock()
-        task?.cancel()
-    }
-
-    private func finish(_ result: Result<URL, Error>) {
-        lock.lock()
-        guard !finished else { lock.unlock(); return }
-        finished = true
-        let continuation = self.continuation
-        self.continuation = nil
-        let session = self.session
-        lock.unlock()
-        session?.finishTasksAndInvalidate()
-        continuation?.resume(with: result)
-    }
-
-    // MARK: URLSessionDownloadDelegate
-
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
-                    totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        let now = Date()
-        guard now.timeIntervalSince(lastReport) > 0.12 || totalBytesWritten == totalBytesExpectedToWrite else { return }
-        lastReport = now
-        onProgress(totalBytesWritten, totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : nil)
-    }
-
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        if let http = downloadTask.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            finish(.failure(RepositoryError.http(http.statusCode)))
-            return
-        }
-        // `location` is deleted when this method returns, so move it now.
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("source-\(UUID().uuidString).ipa")
-        do {
-            try FileManager.default.moveItem(at: location, to: destination)
-            finish(.success(destination))
-        } catch {
-            finish(.failure(error))
-        }
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error {
-            finish(.failure(error))
         }
     }
 }
