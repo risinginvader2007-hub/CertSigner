@@ -4,6 +4,9 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -28,3 +31,14 @@ jobs:
         with:
           name: CertSigner-ipa
           path: CertSigner.ipa
+      - name: Publish to Releases
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest -R "${{ github.repository }}" --yes --cleanup-tag || true
+          gh release create latest CertSigner.ipa -R "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "CertSigner (build ${{ github.run_number }})" \
+            --notes "Unsigned build from commit ${{ github.sha }}. Install with FlareStore or any signer." \
+            --latest

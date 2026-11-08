@@ -5,12 +5,12 @@ Built with SwiftUI (iOS 16+), compiled by GitHub Actions — no Mac needed.
 
 ## Get the IPA
 
-1. Push to `main` (or open **Actions → Build IPA → Run workflow**).
-2. Wait for the green tick (about 2–5 minutes).
-3. Open the run, scroll to **Artifacts**, download **CertSigner-ipa**, unzip it.
-4. Send `CertSigner.ipa` to your iPhone and install it with FlareStore (or any signer).
+**Direct link (always the newest build):**
+https://github.com/risinginvader2007-hub/CertSigner/releases/latest/download/CertSigner.ipa
 
-From the command line: `gh run list` → `gh run download <id> -n CertSigner-ipa`.
+Open it in Safari on your iPhone, then share the downloaded file to FlareStore (or any signer) to install.
+
+Every push to `main` rebuilds the app and replaces the `latest` release. The zipped copy is also kept under **Actions → run → Artifacts** (`CertSigner-ipa`).
 
 ## Architecture
 
