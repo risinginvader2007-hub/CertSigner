@@ -47,6 +47,9 @@ struct CertificateDetailView: View {
                 deviceSection(certificate.profile)
                 if let profile = certificate.profile {
                     profileSection(profile)
+                    CardSection("Raw Profile Data", systemImage: "curlybraces") {
+                        ProfileRawDataView(profile: profile)
+                    }
                 } else {
                     CardSection("Profile", systemImage: "doc.badge.gearshape") {
                         Label("The provisioning profile couldn't be read.", systemImage: "exclamationmark.triangle.fill")

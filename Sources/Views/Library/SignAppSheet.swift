@@ -203,6 +203,12 @@ struct SignAppSheet: View {
                     .padding(.vertical, Space.x2 + 2)
                     .background(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
                         .fill(Color.primary.opacity(0.045)))
+                // Raw data as read from the profile, to verify the App ID / wildcard decision.
+                ProfileRawDataView(profile: profile, compactEntitlements: true)
+                    .padding(.horizontal, Space.x3)
+                    .padding(.vertical, Space.x2 + 2)
+                    .background(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                        .fill(Color.primary.opacity(0.03)))
             }
         }
     }

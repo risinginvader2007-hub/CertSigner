@@ -20,8 +20,10 @@ struct ProvisioningProfile {
     var teamID: String
     var teamName: String
     var appIDName: String
-    /// e.g. "ABCDE12345.com.example.*"
+    /// Raw `application-identifier` from the profile's Entitlements dictionary, e.g. "ABCDE12345.com.example.*".
     var applicationIdentifier: String
+    /// Which Entitlements key it came from (nil = not present).
+    var applicationIdentifierKey: String? = nil
     var creationDate: Date?
     var expirationDate: Date?
     var devices: [String]
@@ -31,19 +33,27 @@ struct ProvisioningProfile {
     var developerCertificates: [Data]
     var platforms: [String]
 
-    /// Bundle ID part of the application identifier (team prefix removed).
+    /// Bundle ID part of the application identifier (team / App ID prefix removed).
+    /// "<TEAMID>.*" → "*", "<TEAMID>.com.foo.*" → "com.foo.*", "<TEAMID>.com.foo.app" → "com.foo.app".
     var bundleIDPattern: String {
+        let raw = applicationIdentifier
+        if raw == "*" { return "*" }
         let prefix = teamID + "."
-        if applicationIdentifier.hasPrefix(prefix) {
-            return String(applicationIdentifier.dropFirst(prefix.count))
+        if raw.hasPrefix(prefix) {
+            return String(raw.dropFirst(prefix.count))
         }
-        if let dot = applicationIdentifier.firstIndex(of: ".") {
-            return String(applicationIdentifier[applicationIdentifier.index(after: dot)...])
+        if let dot = raw.firstIndex(of: ".") {
+            return String(raw[raw.index(after: dot)...])
         }
-        return applicationIdentifier
+        return raw
     }
 
-    var isWildcard: Bool { bundleIDPattern.hasSuffix("*") }
+    /// Wildcard when the raw application-identifier is "*", "<TEAMID>.*", or ends in ".*"
+    /// (then any bundle ID under that prefix, the original one and extensions included, is allowed).
+    var isWildcard: Bool {
+        let raw = applicationIdentifier
+        return raw == "*" || raw == teamID + ".*" || raw.hasSuffix(".*") || bundleIDPattern == "*" || bundleIDPattern.hasSuffix(".*")
+    }
 
     var getTaskAllow: Bool { entitlements["get-task-allow"] as? Bool ?? false }
 
@@ -69,6 +79,13 @@ struct ProvisioningProfile {
 
     func containsCertificate(_ der: Data) -> Bool {
         developerCertificates.contains(der)
+    }
+
+    /// Every entitlement with its complete value (nested dictionaries and arrays written out in full).
+    var fullEntitlements: [KeyValue] {
+        entitlements.keys.sorted().map { key in
+            KeyValue(key: key, value: ProfileParser.describeFull(entitlements[key] ?? ""))
+        }
     }
 
     var sortedEntitlements: [KeyValue] {
@@ -118,13 +135,24 @@ enum ProfileParser {
         else { throw ParseError.invalidPlist }
 
         let entitlements = plist["Entitlements"] as? [String: Any] ?? [:]
+        // The App ID always comes from the Entitlements dictionary (never Name / AppIDName).
+        var appIDKey: String?
+        var appID = ""
+        for key in ["application-identifier", "com.apple.application-identifier"] {
+            if let value = entitlements[key] as? String {
+                appID = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                appIDKey = key
+                break
+            }
+        }
         return ProvisioningProfile(
             name: plist["Name"] as? String ?? "Unnamed profile",
             uuid: plist["UUID"] as? String ?? "",
             teamID: (plist["TeamIdentifier"] as? [String])?.first ?? (entitlements["com.apple.developer.team-identifier"] as? String ?? "Unknown"),
             teamName: plist["TeamName"] as? String ?? "Unknown team",
             appIDName: plist["AppIDName"] as? String ?? "",
-            applicationIdentifier: entitlements["application-identifier"] as? String ?? "",
+            applicationIdentifier: appID,
+            applicationIdentifierKey: appIDKey,
             creationDate: plist["CreationDate"] as? Date,
             expirationDate: plist["ExpirationDate"] as? Date,
             devices: plist["ProvisionedDevices"] as? [String] ?? [],
@@ -133,6 +161,22 @@ enum ProfileParser {
             developerCertificates: plist["DeveloperCertificates"] as? [Data] ?? [],
             platforms: plist["Platform"] as? [String] ?? []
         )
+    }
+
+    /// Complete description of a plist value (recursive, nothing summarised).
+    static func describeFull(_ value: Any, indent: String = "") -> String {
+        switch value {
+        case let array as [Any]:
+            if array.isEmpty { return "[]" }
+            return array.map { describeFull($0, indent: indent) }.joined(separator: ", ")
+        case let dict as [String: Any]:
+            if dict.isEmpty { return "{}" }
+            let inner = indent + "  "
+            let lines = dict.keys.sorted().map { "\(inner)\($0) = \(describeFull(dict[$0] ?? "", indent: inner))" }
+            return "{\n" + lines.joined(separator: "\n") + "\n\(indent)}"
+        default:
+            return describe(value)
+        }
     }
 
     /// Short human-readable description of a plist value.
