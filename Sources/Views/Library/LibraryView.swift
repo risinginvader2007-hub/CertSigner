@@ -7,6 +7,9 @@ struct LibraryView: View {
     @AppStorage(SettingsKeys.librarySort) private var sort: LibrarySort = .dateAdded
     @State private var search = ""
     @State private var pendingDelete: LibraryApp?
+    @State private var showPicker = false
+    @State private var showURLPrompt = false
+    @State private var urlText = ""
     @Namespace private var zoom
 
     private var apps: [LibraryApp] { library.filtered(search: search, sort: sort) }
@@ -15,9 +18,16 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                content
-                    .padding(.horizontal, Theme.padding)
-                    .padding(.vertical, 8)
+                VStack(spacing: 14) {
+                    if let transfer = library.transfer {
+                        TransferCard(state: transfer)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    content
+                }
+                .padding(.horizontal, Theme.padding)
+                .padding(.vertical, 8)
+                .animation(Theme.spring, value: library.transfer)
             }
             .background(Theme.background.ignoresSafeArea())
             .refreshable { await library.refresh() }
@@ -43,6 +53,61 @@ struct LibraryView: View {
             } message: {
                 Text("The IPA will be removed from your library.")
             }
+            .sheet(isPresented: $showPicker) {
+                DocumentPicker(
+                    contentTypes: [.item],
+                    onPick: { url in
+                        showPicker = false
+                        importPicked(url)
+                    },
+                    onCancel: { showPicker = false }
+                )
+                .ignoresSafeArea()
+            }
+            .alert("Download IPA", isPresented: $showURLPrompt) {
+                TextField("https://example.com/app.ipa", text: $urlText)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Download") { startDownload() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Paste a direct HTTPS link to an .ipa file.")
+            }
+        }
+    }
+
+    private func importPicked(_ url: URL) {
+        guard url.pathExtension.lowercased() == "ipa" else {
+            try? FileManager.default.removeItem(at: url)
+            toasts.show("\(url.lastPathComponent) isn't an .ipa file.", kind: .error)
+            return
+        }
+        Task {
+            do {
+                // The picker hands us a temp copy (asCopy: true), so move it.
+                let app = try await library.importIPA(from: url, originalName: url.lastPathComponent, moveSource: true)
+                toasts.show("Added \(app.name)", kind: .success)
+            } catch {
+                toasts.show("Couldn't import: \(error.localizedDescription)", kind: .error)
+            }
+        }
+    }
+
+    private func startDownload() {
+        let text = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http" else {
+            toasts.show("That doesn't look like a valid link.", kind: .error)
+            return
+        }
+        urlText = ""
+        Task {
+            do {
+                let app = try await library.download(from: url)
+                toasts.show("Downloaded \(app.name)", kind: .success)
+            } catch {
+                toasts.show("Download failed: \(error.localizedDescription)", kind: .error)
+            }
         }
     }
 
@@ -56,7 +121,7 @@ struct LibraryView: View {
                 title: "No apps yet",
                 message: "Import an IPA from Files, the share sheet, or a URL to get started.",
                 actionTitle: "Import IPA",
-                action: { toasts.show("IPA import arrives in Stage 3.", kind: .info) }
+                action: { showPicker = true }
             )
             .padding(.top, 60)
         } else if apps.isEmpty {
@@ -65,14 +130,14 @@ struct LibraryView: View {
         } else if layout == .grid {
             LazyVGrid(columns: gridColumns, spacing: 14) {
                 ForEach(apps) { app in
-                    link(for: app) { LibraryGridCell(app: app) }
+                    link(for: app) { LibraryGridCell(app: app, icon: library.icons[app.id]) }
                 }
             }
             .animation(Theme.spring, value: apps.map(\.id))
         } else {
             LazyVStack(spacing: 10) {
                 ForEach(apps) { app in
-                    link(for: app) { LibraryListRow(app: app) }
+                    link(for: app) { LibraryListRow(app: app, icon: library.icons[app.id]) }
                 }
             }
             .animation(Theme.spring, value: apps.map(\.id))
@@ -158,10 +223,10 @@ struct LibraryView: View {
         }
         ToolbarItem(placement: .navigationBarTrailing) {
             Menu {
-                Button { toasts.show("Import from Files arrives in Stage 3.") } label: {
+                Button { showPicker = true } label: {
                     Label("Import from Files", systemImage: "folder")
                 }
-                Button { toasts.show("URL download arrives in Stage 3.") } label: {
+                Button { showURLPrompt = true } label: {
                     Label("Download from URL", systemImage: "link")
                 }
             } label: {
@@ -174,12 +239,41 @@ struct LibraryView: View {
     }
 }
 
+struct TransferCard: View {
+    let state: TransferState
+
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text(state.title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Spacer()
+                    if let progress = state.progress {
+                        Text("\(Int(progress * 100))%")
+                            .font(.caption.weight(.semibold))
+                            .monospacedDigit()
+                            .foregroundColor(.secondary)
+                    }
+                }
+                if let progress = state.progress {
+                    ProgressBar(progress: progress)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 struct LibraryGridCell: View {
     let app: LibraryApp
+    var icon: UIImage? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            AppIconView(name: app.name, size: 60)
+            AppIconView(image: icon, name: app.name, size: 60)
             VStack(alignment: .leading, spacing: 3) {
                 Text(app.name)
                     .font(.subheadline.weight(.semibold))
@@ -210,10 +304,11 @@ struct LibraryGridCell: View {
 
 struct LibraryListRow: View {
     let app: LibraryApp
+    var icon: UIImage? = nil
 
     var body: some View {
         HStack(spacing: 14) {
-            AppIconView(name: app.name, size: 52)
+            AppIconView(image: icon, name: app.name, size: 52)
             VStack(alignment: .leading, spacing: 3) {
                 Text(app.name)
                     .font(.body.weight(.semibold))

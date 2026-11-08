@@ -13,6 +13,7 @@ struct RootView: View {
     @EnvironmentObject private var router: TabRouter
     @EnvironmentObject private var toasts: ToastCenter
     @EnvironmentObject private var importer: ImportCoordinator
+    @EnvironmentObject private var library: LibraryStore
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
     @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .blue
 
@@ -52,8 +53,17 @@ struct RootView: View {
         switch importer.handleIncoming(url) {
         case .certificateFile:
             router.tab = .certificates // the import sheet opens and shows its own toast
-        case .ipa(let name):
-            toasts.show("Received \(name). IPA import arrives in Stage 3.", kind: .info)
+        case .ipa(let tempURL, let name):
+            router.tab = .library
+            Task {
+                do {
+                    let app = try await library.importIPA(from: tempURL, originalName: name, moveSource: true)
+                    toasts.show("Added \(app.name) to Library", kind: .success)
+                } catch {
+                    try? FileManager.default.removeItem(at: tempURL)
+                    toasts.show("Couldn't import \(name): \(error.localizedDescription)", kind: .error)
+                }
+            }
         case .unsupported(let name):
             toasts.show("CertSigner can't open \(name).", kind: .error)
         case .unreadable(let name, let reason):

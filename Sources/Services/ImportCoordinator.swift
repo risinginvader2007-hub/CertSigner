@@ -18,7 +18,8 @@ final class ImportCoordinator: ObservableObject {
 
     enum IncomingResult {
         case certificateFile(String)
-        case ipa(String)
+        /// A temp copy of the IPA, ready to be moved into the library.
+        case ipa(URL, String)
         case unsupported(String)
         case unreadable(String, String)
     }
@@ -33,7 +34,15 @@ final class ImportCoordinator: ObservableObject {
             if url.path.contains("/Inbox/") { try? FileManager.default.removeItem(at: url) }
         }
 
-        if ext == "ipa" { return .ipa(name) }
+        if ext == "ipa" {
+            let temp = FileManager.default.temporaryDirectory.appendingPathComponent("incoming-\(UUID().uuidString).ipa")
+            do {
+                try FileManager.default.copyItem(at: url, to: temp)
+                return .ipa(temp, name)
+            } catch {
+                return .unreadable(name, error.localizedDescription)
+            }
+        }
         guard ImportCoordinator.certificateExtensions.contains(ext) else { return .unsupported(name) }
 
         do {

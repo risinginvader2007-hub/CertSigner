@@ -36,9 +36,9 @@ Sources/
 | Stage | Contents | Status |
 |---|---|---|
 | 1 | Skeleton + CI unsigned IPA | ✅ |
-| 2 | Design system, tab bar, certificates manager, library UI (sample data) | ✅ |
-| 3 | IPA import (Files, share sheet, URL), icon/metadata extraction, persistence | |
-| 4 | zsign integration, signing pipeline with progress | |
+| 2 | Design system, tab bar, certificates manager, library UI | ✅ |
+| 3 | IPA import (Files, share sheet, URL), icon/metadata extraction, persistence | ✅ (basic, shipped with 4) |
+| 4 | zsign integration, signing pipeline with progress | ✅ |
 | 5 | Local HTTPS server and install flow | |
 | 6 | Signed apps list, re-sign, sources/repos | |
 | 7 | Tweaks (dylib/.deb injection), settings polish, log export, app icons | |
@@ -54,9 +54,19 @@ Sources/
 - **UDID check**: sideloaded apps cannot read the device UDID (Apple restricts it). Paste your UDID in **Settings → This Device**; each certificate then shows whether this iPhone is in its profile.
 - Certificates imported in Stage 1 are migrated automatically.
 
-### Library (sample data in Stage 2)
-- Grid / list toggle and sort (date, name, size) from the top-left menu; search by name or bundle ID; pull to refresh; long-press to copy the bundle ID or delete.
-- Tap an app for its detail page (zoom transition on iOS 18+). **Sign App** opens a *demo* of the signing progress screen (no real signing yet).
+### Library
+- **Add apps**: Library → **+** → *Import from Files* or *Download from URL* (direct HTTPS link to an .ipa), or share an .ipa from Files → **CertSigner**.
+- Name, bundle ID, version, size, minimum iOS, extensions and the icon are read from the IPA.
+- Grid / list toggle and sort (date, name, size) from the top-left menu; search; pull to refresh; long-press to copy the bundle ID or delete.
+
+### Signing
+- Open an app → **Sign App**. Pick a certificate, optionally change display name / bundle ID / version, remove app extensions or the Watch app.
+- Pre-flight checks block signing with a clear message when: the bundle ID (or an extension's) doesn't match the profile's App ID, the certificate is expired, the .p12 isn't in the profile, or your UDID (from Settings) isn't in the profile.
+  Explicit (non-wildcard) profiles pre-fill their exact bundle ID.
+- Pipeline: **Unpacking** (unzip) → **Patching** (Info.plist edits, nested bundle IDs, `embedded.mobileprovision`) → **Signing** (zsign on-device; frameworks, dylibs and extensions first, main binary last; entitlements from the profile) → **Packaging** (re-zip). Live progress ring and log.
+- The result lands in the **Signed** tab (date, certificate, expiry countdown). Share the IPA from there until on-device install arrives in Stage 5.
+
+The signing engine is [zsign](https://github.com/zhlynn/zsign) (MIT), vendored in `Vendor/zsign` and built as the `ZSign` static library with OpenSSL 3; see `Vendor/README.md`.
 
 ### Settings
 - Theme (System / Light / Dark), accent colour, device UDID, clear cache, version info.

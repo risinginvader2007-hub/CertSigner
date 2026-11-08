@@ -34,15 +34,23 @@ struct LibraryAppDetailView: View {
                         InfoRow(label: "Minimum iOS", value: minimumOS)
                     }
                     Divider()
+                    InfoRow(label: "Extensions", value: app.extensions.isEmpty ? "None" : "\(app.extensions.count)")
+                    if app.containsWatchApp {
+                        Divider()
+                        InfoRow(label: "Watch app", value: "Included")
+                    }
+                    Divider()
                     InfoRow(label: "Added", value: app.dateAdded.shortDate)
+                    if let original = app.originalFileName {
+                        Divider()
+                        InfoRow(label: "File", value: original)
+                    }
                 }
 
                 CardSection("Signing", systemImage: "signature") {
                     if let active = certificates.active {
                         HStack(spacing: 12) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.title2)
-                                .foregroundColor(accent)
+                            CertificateGlyph(seed: active.nickname, size: 36)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(active.nickname).font(.subheadline.weight(.semibold))
                                 Text(active.profile?.teamName ?? "Unknown team")
@@ -63,12 +71,16 @@ struct LibraryAppDetailView: View {
 
                 VStack(spacing: 12) {
                     PrimaryButton(title: "Sign App", systemImage: "signature") {
-                        showSigning = true
+                        if certificates.certificates.isEmpty {
+                            toasts.show("Import a certificate first.", kind: .warning)
+                            router.tab = .certificates
+                        } else {
+                            showSigning = true
+                        }
                     }
                     PrimaryButton(title: "Delete from Library", systemImage: "trash", style: .tinted) {
                         confirmDelete = true
                     }
-                    .tint(Theme.danger)
                     .environment(\.themeAccent, Theme.danger)
                 }
                 .padding(.top, 4)
@@ -79,7 +91,7 @@ struct LibraryAppDetailView: View {
         .navigationTitle(app.name)
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showSigning) {
-            SigningPreviewSheet(app: app)
+            SignAppSheet(app: app)
         }
         .confirmationDialog("Delete \(app.name)?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
@@ -95,7 +107,7 @@ struct LibraryAppDetailView: View {
 
     private var header: some View {
         VStack(spacing: 14) {
-            AppIconView(name: app.name, size: 104)
+            AppIconView(image: library.icons[app.id], name: app.name, size: 104)
             VStack(spacing: 4) {
                 Text(app.name)
                     .font(.title2.weight(.bold))
@@ -107,9 +119,6 @@ struct LibraryAppDetailView: View {
             HStack(spacing: 8) {
                 StatusBadge(text: "v\(app.version)", kind: .info)
                 StatusBadge(text: app.size.byteString, systemImage: "internaldrive", kind: .neutral)
-                if app.isSample {
-                    StatusBadge(text: "Demo", systemImage: "sparkles", kind: .warning)
-                }
             }
         }
         .frame(maxWidth: .infinity)

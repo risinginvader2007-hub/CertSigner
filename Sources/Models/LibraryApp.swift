@@ -9,11 +9,18 @@ struct LibraryApp: Identifiable, Codable, Hashable {
     var size: Int64
     var dateAdded: Date
     var minimumOS: String?
-    /// File name of the IPA inside the library folder.
+    /// File name of the IPA inside the app's library folder.
     var fileName: String
     /// File name of the extracted icon PNG, if any.
     var iconFileName: String?
-    var isSample: Bool = false
+    /// Original file name the user imported.
+    var originalFileName: String?
+    /// CFBundleIdentifiers of PlugIns/Extensions (.appex).
+    var extensionBundleIDs: [String]?
+    var hasWatchApp: Bool?
+
+    var extensions: [String] { extensionBundleIDs ?? [] }
+    var containsWatchApp: Bool { hasWatchApp ?? false }
 }
 
 enum LibrarySort: String, CaseIterable, Identifiable {
