@@ -15,9 +15,20 @@ struct RootView: View {
     @EnvironmentObject private var queue: SigningQueue
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
     @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .aurora
+    /// The animated intro plays once, on first launch.
+    @AppStorage("ui.introSeen") private var introSeen = false
 
     var body: some View {
         shell
+            .overlay {
+                if !introSeen {
+                    IntroOverlay {
+                        withAnimation(.easeOut(duration: Motion.standard)) { introSeen = true }
+                    }
+                    .transition(.opacity)
+                    .zIndex(10)
+                }
+            }
             .tint(accent.color)
             .environment(\.themeAccent, accent.color)
             .environment(\.themeGradient, accent.gradient)
@@ -94,17 +105,17 @@ private struct NativeTabShell: View {
     var body: some View {
         TabView(selection: $router.tab) {
             Tab(AppTab.home.title, systemImage: AppTab.home.systemImage, value: AppTab.home) {
-                tabScreen(.home)
+                tabScreen(.home).environment(\.auroraActive, router.tab == .home)
             }
             Tab(AppTab.library.title, systemImage: AppTab.library.systemImage, value: AppTab.library) {
-                tabScreen(.library)
+                tabScreen(.library).environment(\.auroraActive, router.tab == .library)
             }
             .badge(signedApps.attentionCount)
             Tab(AppTab.sources.title, systemImage: AppTab.sources.systemImage, value: AppTab.sources) {
-                tabScreen(.sources)
+                tabScreen(.sources).environment(\.auroraActive, router.tab == .sources)
             }
             Tab(AppTab.settings.title, systemImage: AppTab.settings.systemImage, value: AppTab.settings) {
-                tabScreen(.settings)
+                tabScreen(.settings).environment(\.auroraActive, router.tab == .settings)
             }
             Tab(value: AppTab.search, role: .search) {
                 tabScreen(.search)
@@ -128,6 +139,7 @@ private struct LegacyTabShell: View {
             ForEach(AppTab.barTabs) { tab in
                 let selected = router.tab == tab
                 tabScreen(tab)
+                    .environment(\.auroraActive, selected)
                     .opacity(selected ? 1 : 0)
                     .scaleEffect(selected ? 1 : 0.985)
                     .allowsHitTesting(selected)

@@ -570,7 +570,6 @@ struct SignedAppListRow: View {
                     : AnyShapeStyle(accent.opacity(0.14)))
             )
             .overlay(Capsule().strokeBorder(Color.white.opacity(filled ? 0.3 : 0.08), lineWidth: 0.75))
-            .ambientGlow(filled ? accent : .clear, radius: 8, opacity: 0.35)
     }
 }
 

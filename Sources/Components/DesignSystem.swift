@@ -182,6 +182,7 @@ struct AuroraBackground: View {
     @Environment(\.themeGradient) private var gradient
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.auroraActive) private var active
     @State private var drift = false
 
     private var colors: [Color] {
@@ -207,9 +208,18 @@ struct AuroraBackground: View {
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .onAppear {
-            guard !reduceMotion else { return }
+        .onAppear { updateDrift() }
+        .onChange(of: active) { _ in updateDrift() }
+    }
+
+    /// Drifts only while visible (hidden tabs pause, so off-screen auroras cost nothing).
+    private func updateDrift() {
+        if active && !reduceMotion {
             withAnimation(.easeInOut(duration: 16).repeatForever(autoreverses: true)) { drift = true }
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { drift = false }
         }
     }
 
@@ -219,6 +229,18 @@ struct AuroraBackground: View {
                                  startRadius: 0, endRadius: size / 2))
             .frame(width: size, height: size)
             .frame(maxWidth: .infinity, alignment: .center)
+    }
+}
+
+private struct AuroraActiveKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// False for screens that are alive but hidden (inactive tabs): the aurora stops animating.
+    var auroraActive: Bool {
+        get { self[AuroraActiveKey.self] }
+        set { self[AuroraActiveKey.self] = newValue }
     }
 }
 
@@ -385,7 +407,6 @@ struct ExpiryRing: View {
                 .stroke(AngularGradient(colors: [color.opacity(0.6), color], center: .center),
                         style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .shadow(color: color.opacity(0.4), radius: 3)
             Text(days.map { $0 > 99 ? "99+" : "\($0)" } ?? "–")
                 .font(.system(size: size * 0.3, weight: .bold, design: .rounded))
                 .monospacedDigit()

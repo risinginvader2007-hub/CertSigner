@@ -65,6 +65,38 @@ Open it in Safari on your iPhone, then share the file to FlareStore (or any sign
 ### 7. Settings
 Certificates, signing defaults (remove extensions, keep bundle ID), install after signing, delete original IPA after signing, install method, UDID, appearance (system / light / dark), accent colour, **app icon** (Ocean, Sunset, Mint, Midnight), storage usage with Clear Cache and Remove Unused Imports, **Export Log File**, and About.
 
+## Design language
+
+"Futuristic, calm, alive": dark-first, layered glass, one signature gradient, motion that explains instead of decorates.
+
+- **Colour**: near-black base with lifted depth layers (`Theme.background`, `surface`, `surfaceRaised`) and an airy light mode. The default **Aurora** accent is a deep indigo → electric violet → cyan gradient (`Theme.signature`); every accent in Settings has its own gradient (`AccentOption.gradient`, exposed as the `themeGradient` environment value). Semantic success / warning / danger colours are tuned to glow slightly on dark surfaces.
+- **Surfaces**: cards use `CardSurface`: depth fill, soft top inner highlight, gradient hairline border, gentle shadow (stronger borders with Increase Contrast). Screens sit on `AuroraBackground`: three large radial gradients drifting slowly (no blur filters; static with Reduce Motion; paused on hidden tabs). Liquid Glass (`glassEffect`) is used on iOS 26, with material + highlight + hairline fallbacks (opaque with Reduce Transparency).
+- **Type**: SF Rounded everywhere, tabular digits for numbers, tight tracking on large numbers and titles.
+- **Shape and spacing**: 4/8 pt grid (`Space.x1…x8`), one continuous-corner scale (`Radius.xs 8, sm 12, md 16, lg 22, xl 28`), 44 pt minimum touch targets on custom controls.
+- **Icons**: SF Symbols with symbol effects on iOS 17+ (`symbolBounce`, `symbolPulse`, `symbolVariableColor`, `symbolReplace`), all no-ops with Reduce Motion or on iOS 16.
+- **Controls**: glowing gradient primary buttons with a lit edge and success/error morph, sliding glass segmented control, focus-glow text fields, gradient progress rings/bars, expiry rings, swipe-to-dismiss toasts, consistent sheet chrome (grabber, large corners).
+
+### Motion tokens (`Motion` in Theme.swift)
+| Token | Curve | Used for |
+|---|---|---|
+| `snappy` | spring 0.28 s, damping 0.82 | taps, toggles, selection pills, segmented control |
+| `smooth` | spring 0.45 s, damping 0.86 | layout changes, cards, staggered entrances (`Theme.spring`) |
+| `bouncy` | spring 0.5 s, damping 0.66 | confirmations, badges, icons popping in (`Theme.bouncy`) |
+| `gentle` | ease-in-out 0.6 s | ambient glows, breathing |
+| `quick` / `standard` / `slow` | 0.18 / 0.3 / 0.6 s | fades and timed transitions |
+| `stagger` | 0.05 s | delay between items in staggered lists |
+
+`Motion.adaptive(_:reduceMotion:)` turns any of them into a short cross-fade when Reduce Motion is on. Progress numbers never animate (they update in place).
+
+### What you'll see
+- First launch: a one-time animated intro (tap or Skip), on the same colour as the launch screen.
+- Home: staggered entrance, stat cards that count up once, a breathing "Needs attention" banner, an import zone with a marching gradient border that glows on drag-over, and a hero certificate card that tilts slightly as you scroll (iOS 17+).
+- Library / Sources: rows on depth surfaces over the aurora, expiry rings with days left, gradient Install buttons, a shimmering gradient step bar while signing.
+- Review & Sign: a stepper checklist (status icons joined by a rail, passed checks collapse, failing ones stay open).
+- Certificates: the active card glows with a gradient border and a tinted sheet behind it.
+- Settings: sliding glass theme control, live app-icon preview, animated storage bar.
+- Feature regression checklist: [`docs/FEATURE_INVENTORY.md`](docs/FEATURE_INVENTORY.md).
+
 ## Architecture
 
 ```
@@ -75,7 +107,7 @@ Sources/
                AppBundlePatcher, SigningValidator, IPAInspector, ZSignService, InstallSession, LocalHTTPServer,
                ServerCertificateStore, Keychain, P12Inspector, DERCertificateParser, AppLog, StorageService
   Views/       Home, Library, Sources, Certificates, Install, Settings, Search
-  Components/  Theme, FloatingTabBar, PrimaryButton, Card, StatusBadge, ProgressRing/Bar, EmptyStateView,
+  Components/  Theme (tokens + Motion), DesignSystem (glass, aurora, glow, symbol effects, controls), IntroOverlay, FloatingTabBar, PrimaryButton, Card, StatusBadge, ProgressRing/Bar, EmptyStateView,
                AppIconView, ToastView, DocumentPicker, Effects (shimmer, shake, checkmark draw-in, zoom transition)
   Resources/   Assets.xcassets (original app icons)
 Vendor/        zsign (MIT, patched for iOS) + Objective-C++ bridge + TLS helper — see Vendor/README.md
