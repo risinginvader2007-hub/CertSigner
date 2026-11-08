@@ -10,7 +10,9 @@ struct InstallSheet: View {
     @Environment(\.themeAccent) private var accent
     @AppStorage(SettingsKeys.installMethod) private var method: InstallMethod = .automatic
 
-    @StateObject private var session = InstallSession()
+    /// One app-wide session: if this sheet is created twice (e.g. re-presented right after automatic
+    /// signing) both copies show the same install, and nothing restarts the server iOS is talking to.
+    @ObservedObject private var session = InstallSession.shared
     @State private var shakes = 0
 
     private enum Stage: Int, CaseIterable {
@@ -65,14 +67,21 @@ struct InstallSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(session.phase.isActive ? "Cancel" : "Done") {
-                        session.stop()
+                        session.cancel()
                         dismiss()
                     }
                 }
             }
         }
-        .task { await begin() }
-        .onDisappear { session.stop() }
+        .task {
+            if session.isRunning(for: app.id) {
+                AppLog.info("install: sheet shown again for \(app.name); keeping the running install")
+                return
+            }
+            await begin()
+        }
+        // Closing the sheet mid-install leaves the server up (iOS may still be fetching);
+        // the prompt watchdog or the post-install grace period shuts it down.
         .onChange(of: failure) { newValue in
             if newValue != nil { withAnimation(.linear(duration: 0.45)) { shakes += 1 } }
         }
@@ -261,7 +270,7 @@ struct InstallSheet: View {
                     Task { await begin() }
                 }
                 PrimaryButton(title: "Install Settings", systemImage: "gearshape", style: .tinted) {
-                    session.stop()
+                    session.cancel()
                     router.tab = .settings
                     dismiss()
                 }

@@ -96,15 +96,21 @@ final class ServerCertificateStore: ObservableObject {
 
     /// Downloads the current *.backloop.dev pack (same source Feather uses).
     @discardableResult
-    func refreshBackloop() async throws -> ServerCertificate {
+    /// When backloop.dev was last asked for its certificate (successful or not).
+    var lastBackloopAttempt: Date? {
+        UserDefaults.standard.object(forKey: "server.backloopLastAttempt") as? Date
+    }
+
+    func refreshBackloop(timeout: TimeInterval = 20) async throws -> ServerCertificate {
         isRefreshing = true
         defer { isRefreshing = false }
+        UserDefaults.standard.set(Date(), forKey: "server.backloopLastAttempt")
 
         let data: Data
         do {
             var request = URLRequest(url: ServerCertificateStore.packURL)
             request.cachePolicy = .reloadIgnoringLocalCacheData
-            request.timeoutInterval = 20
+            request.timeoutInterval = timeout
             let (body, response) = try await URLSession.shared.data(for: request)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 throw ServerCertificateError.download("HTTP \(http.statusCode)")

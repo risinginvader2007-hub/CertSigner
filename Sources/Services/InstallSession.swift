@@ -41,6 +41,8 @@ enum InstallError: LocalizedError {
 /// Runs one itms-services install: local server → manifest → iOS prompt → payload → done.
 @MainActor
 final class InstallSession: ObservableObject {
+    static let shared = InstallSession()
+
     @Published private(set) var phase: InstallPhase = .idle
     @Published private(set) var methodDescription = ""
     @Published private(set) var log: [LogLine] = []
@@ -53,6 +55,23 @@ final class InstallSession: ObservableObject {
     private var payloadPath = ""
     private var lastProgress = 0.0
     private var lifecycleObservers: [NSObjectProtocol] = []
+    private var startedAt = Date()
+    /// The signed app this session is installing.
+    private(set) var appID: UUID?
+
+    /// Re-check backloop.dev at most this often when its last certificate was expired or unreachable.
+    static let backloopRecheckInterval: TimeInterval = 12 * 60 * 60
+
+    func isRunning(for id: UUID) -> Bool {
+        appID == id && phase.isActive
+    }
+
+    /// User cancelled / closed: stop and forget, so the next Install starts fresh.
+    func cancel() {
+        stop()
+        phase = .idle
+        appID = nil
+    }
 
     static let promptTimeout: UInt64 = 180 // seconds
 
@@ -60,6 +79,8 @@ final class InstallSession: ObservableObject {
         stop()
         log = []
         lastProgress = 0
+        startedAt = Date()
+        appID = app.id
         phase = .preparing
         beginBackgroundTask()
         observeLifecycle()
@@ -72,10 +93,15 @@ final class InstallSession: ObservableObject {
             var certificate: ServerCertificate?
             if method != .semiLocal {
                 certificate = certificates.preferred
-                if certificate == nil {
+                let recheckDue = certificates.lastBackloopAttempt
+                    .map { Date().timeIntervalSince($0) > InstallSession.backloopRecheckInterval } ?? true
+                if certificate == nil && method == .automatic && !recheckDue {
+                    // The last check found no usable backloop.dev certificate: don't wait on the network again.
+                    note("No valid server certificate (backloop.dev checked recently); using Semi-Local")
+                } else if certificate == nil {
                     note("No valid server certificate stored; fetching backloop.dev…")
                     do {
-                        certificate = try await certificates.refreshBackloop()
+                        certificate = try await certificates.refreshBackloop(timeout: method == .automatic ? 8 : 20)
                     } catch {
                         note(error.localizedDescription, error: method == .localHTTPS)
                     }
@@ -215,6 +241,8 @@ final class InstallSession: ObservableObject {
     }
 
     private func note(_ text: String, error: Bool = false) {
+        let elapsed = String(format: "+%.2fs", Date().timeIntervalSince(startedAt))
+        let text = "[\(elapsed)] \(text)"
         log.append(LogLine(text: text, isError: error))
         if error { AppLog.error("install: \(text)") } else { AppLog.info("install: \(text)") }
     }
