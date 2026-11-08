@@ -3,8 +3,8 @@ import SwiftUI
 struct CertificatesView: View {
     @EnvironmentObject private var certificates: CertificateStore
     @EnvironmentObject private var toasts: ToastCenter
+    @EnvironmentObject private var importer: ImportCoordinator
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
-    @State private var showImport = false
     @State private var pendingDelete: Certificate?
 
     var body: some View {
@@ -17,7 +17,7 @@ struct CertificatesView: View {
                             title: "No certificates",
                             message: "Import your .p12 and matching .mobileprovision to start signing apps.",
                             actionTitle: "Import Certificate",
-                            action: { showImport = true }
+                            action: { importer.showCertificateImport = true }
                         )
                         .padding(.top, 60)
                     } else {
@@ -44,7 +44,7 @@ struct CertificatesView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        showImport = true
+                        importer.showCertificateImport = true
                     } label: {
                         Image(systemName: "plus.circle.fill")
                             .symbolRenderingMode(.hierarchical)
@@ -56,7 +56,7 @@ struct CertificatesView: View {
             .navigationDestination(for: UUID.self) { id in
                 CertificateDetailView(certificateID: id)
             }
-            .sheet(isPresented: $showImport) {
+            .sheet(isPresented: $importer.showCertificateImport) {
                 ImportCertificateView()
             }
             .confirmationDialog(

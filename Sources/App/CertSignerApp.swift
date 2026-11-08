@@ -6,6 +6,7 @@ struct CertSignerApp: App {
     @StateObject private var library = LibraryStore()
     @StateObject private var toasts = ToastCenter()
     @StateObject private var router = TabRouter()
+    @StateObject private var importer = ImportCoordinator()
 
     var body: some Scene {
         WindowGroup {
@@ -14,6 +15,7 @@ struct CertSignerApp: App {
                 .environmentObject(library)
                 .environmentObject(toasts)
                 .environmentObject(router)
+                .environmentObject(importer)
         }
     }
 }

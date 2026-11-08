@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ImportCertificateView: View {
-    private enum PickTarget {
+    private enum PickTarget: String {
         case p12, profile
 
         var allowedExtensions: [String] {
@@ -18,16 +18,19 @@ struct ImportCertificateView: View {
             case .profile: return ".mobileprovision profile"
             }
         }
-    }
-    private enum Field { case nickname, password }
 
-    private struct PickedFile {
-        let name: String
-        let data: Data
+        static func forExtension(_ ext: String) -> PickTarget? {
+            if PickTarget.p12.allowedExtensions.contains(ext) { return .p12 }
+            if PickTarget.profile.allowedExtensions.contains(ext) { return .profile }
+            return nil
+        }
     }
+
+    private enum Field { case nickname, password }
 
     @EnvironmentObject private var certificates: CertificateStore
     @EnvironmentObject private var toasts: ToastCenter
+    @EnvironmentObject private var importer: ImportCoordinator
     @Environment(\.dismiss) private var dismiss
 
     @State private var nickname = ""
@@ -36,7 +39,7 @@ struct ImportCertificateView: View {
     @State private var p12: PickedFile?
     @State private var profileFile: PickedFile?
     @State private var profilePreview: ProvisioningProfile?
-    @State private var showImporter = false
+    @State private var showPicker = false
     @State private var pendingKind: PickTarget = .p12 // never cleared on dismiss
     @State private var debugLine = "Debug: nothing picked yet"
     @State private var isImporting = false
@@ -138,17 +141,28 @@ struct ImportCertificateView: View {
                     Button("Cancel") { dismiss() }
                 }
             }
-            .fileImporter(
-                isPresented: $showImporter,
-                allowedContentTypes: [.item],
-                allowsMultipleSelection: false
-            ) { result in
-                handlePick(result, target: pendingKind)
+            .sheet(isPresented: $showPicker) {
+                DocumentPicker(
+                    contentTypes: [.item],
+                    onPresented: { debugLine = "Debug: [\(pendingKind.rawValue)] picker presented" },
+                    onPick: { url in
+                        showPicker = false
+                        debugLine = "Debug: [\(pendingKind.rawValue)] delegate: picked \(url.lastPathComponent)"
+                        readPicked(url, target: pendingKind)
+                    },
+                    onCancel: {
+                        showPicker = false
+                        debugLine = "Debug: [\(pendingKind.rawValue)] delegate: cancelled"
+                    }
+                )
+                .ignoresSafeArea()
             }
             // The sheet covers the root toast overlay, so host toasts here too.
             .modifier(ToastHost(center: toasts))
         }
         .interactiveDismissDisabled(isImporting)
+        .onAppear { consumeIncoming() }
+        .onChange(of: importer.pendingCertificateFiles.count) { _ in consumeIncoming() }
     }
 
     private var profileSubtitle: String {
@@ -161,63 +175,63 @@ struct ImportCertificateView: View {
     }
 
     private func openPicker(_ kind: PickTarget) {
+        focused = nil
         pendingKind = kind
-        showImporter = true
+        debugLine = "Debug: [\(kind.rawValue)] opening picker…"
+        showPicker = true
     }
 
-    private func handlePick(_ result: Result<[URL], Error>, target: PickTarget) {
-        let url: URL
-        switch result {
-        case .failure(let error):
-            debugLine = "Debug: [\(target)] picker error: \(error.localizedDescription)"
-            fail("Couldn't open the file: \(error.localizedDescription)")
-            return
-        case .success(let urls):
-            guard let first = urls.first else {
-                debugLine = "Debug: [\(target)] picker returned no file"
-                fail("No file was selected.")
-                return
-            }
-            url = first
-        }
-
+    /// Picker URLs are copies in tmp (asCopy: true), so read directly and clean up.
+    private func readPicked(_ url: URL, target: PickTarget) {
         let name = url.lastPathComponent
-        let ext = url.pathExtension.lowercased()
-        guard target.allowedExtensions.contains(ext) else {
-            debugLine = "Debug: [\(target)] \(name) → rejected (extension .\(ext))"
-            fail("\(name) isn't a \(target.label).")
-            return
-        }
-
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        let data: Data
+        defer { try? FileManager.default.removeItem(at: url) }
         do {
-            data = try Data(contentsOf: url)
+            let data = try Data(contentsOf: url)
+            accept(PickedFile(name: name, data: data), target: target)
         } catch {
-            debugLine = "Debug: [\(target)] \(name) → read failed (scoped: \(scoped)): \(error.localizedDescription)"
+            debugLine = "Debug: [\(target.rawValue)] \(name) → read failed: \(error.localizedDescription)"
             fail("Couldn't read \(name): \(error.localizedDescription)")
+        }
+    }
+
+    /// Files shared into the app via "Open in" / Share → CertSigner.
+    private func consumeIncoming() {
+        for file in importer.takePendingCertificateFiles() {
+            debugLine = "Debug: open-in received \(file.name)"
+            guard let target = PickTarget.forExtension(file.pathExtension) else {
+                fail("\(file.name) isn't a certificate or profile.")
+                continue
+            }
+            accept(file, target: target)
+        }
+    }
+
+    private func accept(_ file: PickedFile, target: PickTarget) {
+        let ext = file.pathExtension
+        guard target.allowedExtensions.contains(ext) else {
+            debugLine = "Debug: [\(target.rawValue)] \(file.name) → rejected (extension .\(ext))"
+            fail("\(file.name) isn't a \(target.label).")
             return
         }
 
         errorMessage = nil
         switch target {
         case .p12:
-            p12 = PickedFile(name: name, data: data)
-            debugLine = "Debug: [p12] \(name) → OK, \(data.count) bytes"
+            p12 = file
+            debugLine = "Debug: [p12] \(file.name) → OK, \(file.data.count) bytes"
             toasts.show("Certificate file selected", kind: .success)
         case .profile:
             do {
-                let parsed = try ProfileParser.parse(data: data)
-                profileFile = PickedFile(name: name, data: data)
+                let parsed = try ProfileParser.parse(data: file.data)
+                profileFile = file
                 withAnimation(Theme.spring) { profilePreview = parsed }
                 if nickname.isEmpty { nickname = parsed.name }
-                debugLine = "Debug: [profile] \(name) → OK, \(data.count) bytes, \"\(parsed.name)\""
+                debugLine = "Debug: [profile] \(file.name) → OK, \(file.data.count) bytes, \"\(parsed.name)\""
                 toasts.show("Profile loaded: \(parsed.name)", kind: .success)
             } catch {
                 profileFile = nil
                 profilePreview = nil
-                debugLine = "Debug: [profile] \(name) → parse failed: \(error.localizedDescription)"
+                debugLine = "Debug: [profile] \(file.name) → parse failed: \(error.localizedDescription)"
                 fail(error.localizedDescription)
             }
         }

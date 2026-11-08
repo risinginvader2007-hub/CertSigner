@@ -13,6 +13,40 @@ targets:
     sources: [Sources]
     dependencies:
       - package: ZIPFoundation
+    # XcodeGen writes this plist at generate time; Xcode merges the INFOPLIST_KEY_* settings into it.
+    info:
+      path: Support/Info.plist
+      properties:
+        LSSupportsOpeningDocumentsInPlace: false
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: iOS App
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.apple.itunes.ipa, com.certsigner.ipa]
+          - CFBundleTypeName: Signing Certificate
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.rsa.pkcs-12, com.certsigner.p12]
+          - CFBundleTypeName: Provisioning Profile
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [com.apple.mobileprovision, com.certsigner.mobileprovision]
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: com.certsigner.ipa
+            UTTypeDescription: iOS App Archive
+            UTTypeConformsTo: [public.data, public.archive]
+            UTTypeTagSpecification:
+              public.filename-extension: [ipa]
+          - UTTypeIdentifier: com.certsigner.p12
+            UTTypeDescription: PKCS 12 Certificate
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [p12, pfx]
+          - UTTypeIdentifier: com.certsigner.mobileprovision
+            UTTypeDescription: Provisioning Profile
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [mobileprovision]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.certsigner.app

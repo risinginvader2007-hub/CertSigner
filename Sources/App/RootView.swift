@@ -12,6 +12,7 @@ final class TabRouter: ObservableObject {
 struct RootView: View {
     @EnvironmentObject private var router: TabRouter
     @EnvironmentObject private var toasts: ToastCenter
+    @EnvironmentObject private var importer: ImportCoordinator
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
     @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .blue
 
@@ -42,5 +43,21 @@ struct RootView: View {
         .preferredColorScheme(appearance.colorScheme)
         .modifier(ToastHost(center: toasts))
         .onChange(of: router.tab) { _ in Haptics.selection() }
+        .onOpenURL { url in handleIncoming(url) }
+    }
+
+    /// "Open in" / Share → CertSigner.
+    private func handleIncoming(_ url: URL) {
+        guard url.isFileURL else { return }
+        switch importer.handleIncoming(url) {
+        case .certificateFile:
+            router.tab = .certificates // the import sheet opens and shows its own toast
+        case .ipa(let name):
+            toasts.show("Received \(name). IPA import arrives in Stage 3.", kind: .info)
+        case .unsupported(let name):
+            toasts.show("CertSigner can't open \(name).", kind: .error)
+        case .unreadable(let name, let reason):
+            toasts.show("Couldn't read \(name): \(reason)", kind: .error)
+        }
     }
 }
