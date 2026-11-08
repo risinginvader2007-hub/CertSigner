@@ -49,6 +49,7 @@ struct LibraryView: View {
     @EnvironmentObject private var toasts: ToastCenter
     @EnvironmentObject private var router: TabRouter
     @EnvironmentObject private var importer: ImportCoordinator
+    @Environment(\.themeAccent) private var accent
 
     @AppStorage("library.signedSort") private var sort: SignedSort = .date
     @State private var statusFilter: StatusFilter = .all
@@ -119,7 +120,7 @@ struct LibraryView: View {
             .background(Theme.background.ignoresSafeArea())
             .animation(Theme.spring, value: queue.tasks.map(\.id))
             .animation(Theme.spring, value: apps.map(\.id))
-            .searchable(text: $search, prompt: "Search signed apps")
+            .librarySearchable(text: $search)
             .refreshable { await reload() }
             .navigationTitle("Library")
             .toolbar { toolbar }
@@ -127,7 +128,6 @@ struct LibraryView: View {
                 SignedAppDetailView(appID: id)
                     .zoomTransition(id: id, in: zoom)
             }
-            .floatingTabBarInset()
             .sheet(item: $installTarget) { app in
                 InstallSheet(app: app).roundedDesign()
             }
@@ -310,8 +310,12 @@ struct LibraryView: View {
                     }
                 }
             } label: {
-                Image(systemName: isFiltering ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                    .font(.title3)
+                Image(systemName: "line.3.horizontal.decrease")
+                    .font(.body.weight(.semibold))
+                    .foregroundColor(isFiltering ? .white : accent)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(isFiltering ? accent : Color.clear))
+                    .glassIconButton()
             }
             .accessibilityLabel("Sort and filter")
         }

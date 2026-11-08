@@ -44,7 +44,6 @@ struct HomeView: View {
             .background(AmbientBackground())
             .refreshable { await refreshHome() }
             .navigationTitle("Home")
-            .floatingTabBarInset()
             .sheet(isPresented: $showPicker) {
                 DocumentPicker(
                     contentTypes: [.item],

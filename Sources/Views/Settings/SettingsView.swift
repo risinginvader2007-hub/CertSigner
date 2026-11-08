@@ -39,7 +39,6 @@ struct SettingsView: View {
                 aboutSection
             }
             .navigationTitle("Settings")
-            .floatingTabBarInset()
             .task { await refreshStorage() }
             .refreshable { await refreshStorage() }
         }

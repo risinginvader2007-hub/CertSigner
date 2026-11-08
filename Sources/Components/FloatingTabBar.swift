@@ -2,14 +2,20 @@ import SwiftUI
 
 enum AppTab: String, CaseIterable, Identifiable, Hashable {
     case home, library, settings
+    /// iOS 26+ only: the native Liquid Glass search tab.
+    case search
 
     var id: String { rawValue }
+
+    /// Tabs shown in the custom bar on iOS 16–25 (no search tab there).
+    static let barTabs: [AppTab] = [.home, .library, .settings]
 
     var title: String {
         switch self {
         case .home: return "Home"
         case .library: return "Library"
         case .settings: return "Settings"
+        case .search: return "Search"
         }
     }
 
@@ -18,11 +24,13 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         case .home: return "house.fill"
         case .library: return "square.stack.3d.up.fill"
         case .settings: return "gearshape.fill"
+        case .search: return "magnifyingglass"
         }
     }
 }
 
-/// Floating glass tab bar with a sliding selection pill and per-tab badges.
+/// Custom floating bar for iOS 16–25 (iOS 26+ uses the native Liquid Glass TabView).
+/// Place it with `.safeAreaInset(edge: .bottom)` so content always sits above it.
 struct FloatingTabBar: View {
     @Binding var selection: AppTab
     var badges: [AppTab: Int] = [:]
@@ -32,16 +40,14 @@ struct FloatingTabBar: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(AppTab.allCases) { tab in
+            ForEach(AppTab.barTabs) { tab in
                 item(tab)
             }
         }
         .padding(6)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 1))
-        .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
-        .padding(.horizontal, 28)
-        .padding(.bottom, 6)
+        .glassCapsule()
+        .padding(.horizontal, 32)
+        .padding(.bottom, 4)
     }
 
     private func item(_ tab: AppTab) -> some View {
@@ -50,7 +56,7 @@ struct FloatingTabBar: View {
         return Button {
             guard tab != selection else { return }
             Haptics.selection()
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { selection = tab }
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) { selection = tab }
         } label: {
             VStack(spacing: 3) {
                 ZStack(alignment: .topTrailing) {
@@ -79,6 +85,7 @@ struct FloatingTabBar: View {
                 if selected {
                     Capsule()
                         .fill(accent.opacity(0.16))
+                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.15), lineWidth: 1))
                         .matchedGeometryEffect(id: "selection", in: namespace)
                 }
             }
@@ -91,12 +98,68 @@ struct FloatingTabBar: View {
     }
 }
 
+// MARK: - Glass styling
+
+/// Pre-iOS 26 stand-in for Liquid Glass: material, faint white stroke, top highlight, soft shadow.
+private struct LegacyGlass<S: InsettableShape>: ViewModifier {
+    let shape: S
+
+    func body(content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial, in: shape)
+            .overlay(
+                shape.fill(
+                    LinearGradient(colors: [Color.white.opacity(0.14), Color.white.opacity(0)],
+                                   startPoint: .top, endPoint: .center)
+                )
+                .allowsHitTesting(false)
+            )
+            .overlay(shape.strokeBorder(Color.white.opacity(0.15), lineWidth: 1).allowsHitTesting(false))
+            .shadow(color: .black.opacity(0.12), radius: 10, x: 0, y: 5)
+    }
+}
+
 extension View {
-    /// Keeps scrolling content clear of the floating tab bar.
-    func floatingTabBarInset() -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: 76)
+    /// Liquid Glass capsule on iOS 26+, material capsule before.
+    @ViewBuilder
+    func glassCapsule() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            self.glassEffect(.regular.interactive(), in: Capsule())
+        } else {
+            self.modifier(LegacyGlass(shape: Capsule()))
         }
+        #else
+        self.modifier(LegacyGlass(shape: Capsule()))
+        #endif
+    }
+
+    /// Round glass background for small floating icon buttons (toolbar items get native glass on iOS 26).
+    @ViewBuilder
+    func glassIconButton() -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            self
+        } else {
+            self.frame(width: 34, height: 34).modifier(LegacyGlass(shape: Circle()))
+        }
+        #else
+        self.frame(width: 34, height: 34).modifier(LegacyGlass(shape: Circle()))
+        #endif
+    }
+
+    /// Library search: inline on iOS 16–25; on iOS 26+ the native Search tab handles it.
+    @ViewBuilder
+    func librarySearchable(text: Binding<String>) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            self
+        } else {
+            self.searchable(text: text, prompt: "Search signed apps")
+        }
+        #else
+        self.searchable(text: text, prompt: "Search signed apps")
+        #endif
     }
 
     /// SF Rounded everywhere (fontDesign needs iOS 16.1).
