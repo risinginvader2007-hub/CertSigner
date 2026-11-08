@@ -3,6 +3,10 @@ import SwiftUI
 /// Options → validation → live signing progress → result.
 struct SignAppSheet: View {
     let app: LibraryApp
+    /// Quick Sign: start immediately with defaults if the pre-sign checks pass.
+    var autoStart: Bool = false
+    /// Remove the staged IPA if the sheet closes without a successful sign.
+    var discardIfUnsigned: Bool = false
 
     @EnvironmentObject private var certificates: CertificateStore
     @EnvironmentObject private var library: LibraryStore
@@ -83,7 +87,21 @@ struct SignAppSheet: View {
         .sheet(item: $installTarget) { app in
             InstallSheet(app: app)
         }
-        .onAppear(perform: prefill)
+        .onAppear {
+            prefill()
+            if autoStart && !started {
+                if hasErrors {
+                    toasts.show("Quick Sign needs your attention: review the issues below.", kind: .warning)
+                } else {
+                    start()
+                }
+            }
+        }
+        .onDisappear {
+            if discardIfUnsigned && job.result != .success && !job.isRunning {
+                library.delete(app)
+            }
+        }
         .onChange(of: certificateID) { _ in
             options.bundleID = SigningValidator.suggestedBundleID(appBundleID: app.bundleID, profile: certificate?.profile)
         }
@@ -200,8 +218,9 @@ struct SignAppSheet: View {
                 }
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.roundedRectangle(radius: 16))
-                PrimaryButton(title: "View in Signed", systemImage: "signature", style: .tinted) {
-                    router.tab = .signed
+                PrimaryButton(title: "View in Library", systemImage: "square.stack.3d.up", style: .tinted) {
+                    router.attentionOnly = false
+                    router.tab = .library
                     dismiss()
                 }
             } else {

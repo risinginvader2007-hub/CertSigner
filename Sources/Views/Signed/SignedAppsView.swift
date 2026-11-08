@@ -7,11 +7,31 @@ struct SignedAppsView: View {
     @State private var pendingDelete: SignedApp?
     @State private var installTarget: SignedApp?
 
+    private var visibleApps: [SignedApp] {
+        router.attentionOnly ? signedApps.apps.filter { $0.needsAttention() } : signedApps.apps
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    if signedApps.apps.isEmpty {
+                    if router.attentionOnly {
+                        HStack {
+                            Label("Showing expiring and expired apps", systemImage: "line.3.horizontal.decrease.circle.fill")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Button {
+                                withAnimation(Theme.spring) { router.attentionOnly = false }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").font(.title3)
+                            }
+                            .accessibilityLabel("Show all apps")
+                        }
+                        .foregroundColor(Theme.warning)
+                        .padding(12)
+                        .background(Capsule().fill(Theme.warning.opacity(0.12)))
+                    }
+                    if visibleApps.isEmpty {
                         EmptyStateView(
                             systemImage: "signature",
                             title: "Nothing signed yet",
@@ -19,7 +39,7 @@ struct SignedAppsView: View {
                         )
                         .padding(.top, 60)
                     } else {
-                        ForEach(signedApps.apps) { app in
+                        ForEach(visibleApps) { app in
                             SignedAppRow(app: app, icon: signedApps.icons[app.id], fileURL: signedApps.ipaURL(for: app)) {
                                 installTarget = app
                             }
@@ -53,7 +73,8 @@ struct SignedAppsView: View {
             }
             .background(Theme.background.ignoresSafeArea())
             .refreshable { await reload() }
-            .navigationTitle("Signed")
+            .navigationTitle("Library")
+            .floatingTabBarInset()
             .sheet(item: $installTarget) { app in
                 InstallSheet(app: app)
             }

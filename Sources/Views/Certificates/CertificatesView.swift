@@ -7,8 +7,9 @@ struct CertificatesView: View {
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
     @State private var pendingDelete: Certificate?
 
+    /// Pushed from Settings / Home, so no NavigationStack of its own.
     var body: some View {
-        NavigationStack {
+        Group {
             ScrollView {
                 VStack(spacing: 12) {
                     if certificates.certificates.isEmpty {
@@ -41,6 +42,7 @@ struct CertificatesView: View {
             .background(Theme.background.ignoresSafeArea())
             .refreshable { await reload() }
             .navigationTitle("Certificates")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -55,9 +57,6 @@ struct CertificatesView: View {
             }
             .navigationDestination(for: UUID.self) { id in
                 CertificateDetailView(certificateID: id)
-            }
-            .sheet(isPresented: $importer.showCertificateImport) {
-                ImportCertificateView()
             }
             .confirmationDialog(
                 "Delete \(pendingDelete?.nickname ?? "certificate")?",

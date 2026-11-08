@@ -1,12 +1,10 @@
 import SwiftUI
 
-enum AppTab: Hashable {
-    case library, sources, certificates, signed, settings
-}
-
 @MainActor
 final class TabRouter: ObservableObject {
-    @Published var tab: AppTab = .library
+    @Published var tab: AppTab = .home
+    /// Library shows only signed apps that are expiring or expired.
+    @Published var attentionOnly = false
 }
 
 struct RootView: View {
@@ -14,37 +12,49 @@ struct RootView: View {
     @EnvironmentObject private var toasts: ToastCenter
     @EnvironmentObject private var importer: ImportCoordinator
     @EnvironmentObject private var library: LibraryStore
+    @EnvironmentObject private var signedApps: SignedAppsStore
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
     @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .blue
 
     var body: some View {
-        TabView(selection: $router.tab) {
-            LibraryView()
-                .tabItem { Label("Library", systemImage: "square.grid.2x2.fill") }
-                .tag(AppTab.library)
+        ZStack(alignment: .bottom) {
+            ZStack {
+                ForEach(AppTab.allCases) { tab in
+                    let selected = router.tab == tab
+                    screen(for: tab)
+                        .opacity(selected ? 1 : 0)
+                        .scaleEffect(selected ? 1 : 0.985)
+                        .allowsHitTesting(selected)
+                        .accessibilityHidden(!selected)
+                }
+            }
 
-            SourcesView()
-                .tabItem { Label("Sources", systemImage: "globe") }
-                .tag(AppTab.sources)
-
-            CertificatesView()
-                .tabItem { Label("Certificates", systemImage: "checkmark.seal.fill") }
-                .tag(AppTab.certificates)
-
-            SignedAppsView()
-                .tabItem { Label("Signed", systemImage: "signature") }
-                .tag(AppTab.signed)
-
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-                .tag(AppTab.settings)
+            FloatingTabBar(selection: $router.tab, badges: [.library: signedApps.attentionCount])
         }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .tint(accent.color)
         .environment(\.themeAccent, accent.color)
         .preferredColorScheme(appearance.colorScheme)
+        .roundedDesign()
         .modifier(ToastHost(center: toasts))
-        .onChange(of: router.tab) { _ in Haptics.selection() }
+        .sheet(isPresented: $importer.showCertificateImport) {
+            ImportCertificateView()
+                .roundedDesign()
+        }
+        .sheet(item: $importer.review) { request in
+            SignAppSheet(app: request.app, autoStart: request.quickSign, discardIfUnsigned: true)
+                .roundedDesign()
+        }
         .onOpenURL { url in handleIncoming(url) }
+    }
+
+    @ViewBuilder
+    private func screen(for tab: AppTab) -> some View {
+        switch tab {
+        case .home: HomeView()
+        case .library: SignedAppsView()
+        case .settings: SettingsView()
+        }
     }
 
     /// "Open in" / Share → CertSigner.
@@ -52,17 +62,11 @@ struct RootView: View {
         guard url.isFileURL else { return }
         switch importer.handleIncoming(url) {
         case .certificateFile:
-            router.tab = .certificates // the import sheet opens and shows its own toast
+            break // the certificate import sheet opens and shows its own toast
         case .ipa(let tempURL, let name):
-            router.tab = .library
             Task {
-                do {
-                    let app = try await library.importIPA(from: tempURL, originalName: name, moveSource: true)
-                    toasts.show("Added \(app.name) to Library", kind: .success)
-                } catch {
-                    try? FileManager.default.removeItem(at: tempURL)
-                    toasts.show("Couldn't import \(name): \(error.localizedDescription)", kind: .error)
-                }
+                await importer.importIPA(from: tempURL, name: name, moveSource: true, quickSign: false,
+                                         library: library, toasts: toasts)
             }
         case .unsupported(let name):
             toasts.show("CertSigner can't open \(name).", kind: .error)

@@ -50,11 +50,11 @@ struct SettingsView: View {
                 }
 
                 Section("Certificates") {
-                    Button {
-                        router.tab = .certificates
+                    NavigationLink {
+                        CertificatesView()
                     } label: {
                         HStack {
-                            Label("Manage Certificates", systemImage: "checkmark.seal")
+                            Label("Certificates", systemImage: "checkmark.seal")
                             Spacer()
                             Text(certificates.active?.nickname ?? "None")
                                 .foregroundColor(.secondary)
@@ -113,6 +113,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .floatingTabBarInset()
             .task { cacheSize = CacheService.size() }
         }
     }

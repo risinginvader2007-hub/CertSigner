@@ -125,26 +125,6 @@ final class LibraryStore: ObservableObject {
         return app
     }
 
-    /// Downloads an IPA over HTTPS, then imports it.
-    @discardableResult
-    func download(from url: URL) async throws -> LibraryApp {
-        transfer = TransferState(title: "Downloading \(url.lastPathComponent)…", progress: 0)
-        let service = DownloadService()
-        let result: DownloadService.Result
-        do {
-            result = try await service.download(url) { [weak self] fraction in
-                Task { @MainActor in
-                    guard let self, self.transfer?.progress != nil else { return }
-                    self.transfer?.progress = fraction
-                }
-            }
-        } catch {
-            transfer = nil
-            throw error
-        }
-        return try await importIPA(from: result.fileURL, originalName: result.suggestedFileName, moveSource: true)
-    }
-
     // MARK: Mutations
 
     func delete(_ app: LibraryApp) {

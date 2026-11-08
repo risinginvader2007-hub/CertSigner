@@ -17,6 +17,11 @@ final class SignedAppsStore: ObservableObject {
         load()
     }
 
+    /// Signed apps that are expiring soon or expired.
+    var attentionCount: Int {
+        apps.filter { $0.needsAttention() }.count
+    }
+
     func folder(for id: UUID) -> URL { root.appendingPathComponent(id.uuidString, isDirectory: true) }
     func ipaURL(for app: SignedApp) -> URL { folder(for: app.id).appendingPathComponent(app.fileName) }
     private var indexURL: URL { root.appendingPathComponent("index.json") }

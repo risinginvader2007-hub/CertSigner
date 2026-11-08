@@ -9,9 +9,36 @@ struct PickedFile: Equatable {
 }
 
 /// Routes files arriving via "Open in" / Share → CertSigner to the right screen.
+/// An imported IPA waiting in the review / sign sheet.
+struct ReviewRequest: Identifiable {
+    let id = UUID()
+    let app: LibraryApp
+    /// Quick Sign: start signing with defaults as soon as the sheet opens.
+    let quickSign: Bool
+}
+
 @MainActor
 final class ImportCoordinator: ObservableObject {
     @Published var showCertificateImport = false
+    @Published var review: ReviewRequest?
+
+    /// Reads an IPA into the staging library, then opens the review sheet.
+    func importIPA(from url: URL, name: String, moveSource: Bool, quickSign: Bool,
+                   library: LibraryStore, toasts: ToastCenter) async {
+        guard url.pathExtension.lowercased() == "ipa" else {
+            if moveSource { try? FileManager.default.removeItem(at: url) }
+            toasts.show("\(name) isn't an .ipa file.", kind: .error)
+            return
+        }
+        do {
+            let app = try await library.importIPA(from: url, originalName: name, moveSource: moveSource)
+            Haptics.success()
+            review = ReviewRequest(app: app, quickSign: quickSign)
+        } catch {
+            if moveSource { try? FileManager.default.removeItem(at: url) }
+            toasts.show("Couldn't import \(name): \(error.localizedDescription)", kind: .error)
+        }
+    }
     @Published private(set) var pendingCertificateFiles: [PickedFile] = []
 
     static let certificateExtensions: Set<String> = ["p12", "pfx", "mobileprovision"]
