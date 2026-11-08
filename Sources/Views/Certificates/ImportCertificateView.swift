@@ -2,7 +2,23 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ImportCertificateView: View {
-    private enum PickTarget { case p12, profile }
+    private enum PickTarget {
+        case p12, profile
+
+        var allowedExtensions: [String] {
+            switch self {
+            case .p12: return ["p12", "pfx"]
+            case .profile: return ["mobileprovision"]
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .p12: return ".p12 certificate"
+            case .profile: return ".mobileprovision profile"
+            }
+        }
+    }
     private enum Field { case nickname, password }
 
     private struct PickedFile {
@@ -20,7 +36,9 @@ struct ImportCertificateView: View {
     @State private var p12: PickedFile?
     @State private var profileFile: PickedFile?
     @State private var profilePreview: ProvisioningProfile?
-    @State private var picking: PickTarget?
+    @State private var showImporter = false
+    @State private var pendingKind: PickTarget = .p12 // never cleared on dismiss
+    @State private var debugLine = "Debug: nothing picked yet"
     @State private var isImporting = false
     @State private var errorMessage: String?
     @State private var shakes = 0
@@ -47,14 +65,14 @@ struct ImportCertificateView: View {
                             subtitle: p12?.name ?? "Tap to choose",
                             systemImage: "key.fill",
                             isDone: p12 != nil
-                        ) { picking = .p12 }
+                        ) { openPicker(.p12) }
                         Divider()
                         FilePickRow(
                             title: "Provisioning profile",
                             subtitle: profileSubtitle,
                             systemImage: "doc.badge.gearshape.fill",
                             isDone: profilePreview != nil
-                        ) { picking = .profile }
+                        ) { openPicker(.profile) }
                     }
 
                     CardSection("Password", systemImage: "lock.fill") {
@@ -99,6 +117,14 @@ struct ImportCertificateView: View {
                     }
                     .disabled(!canImport)
                     .shake(shakes)
+
+                    // TEMPORARY: remove once file picking is confirmed working.
+                    Text(debugLine)
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
+                        .textSelection(.enabled)
                 }
                 .padding(Theme.padding)
                 .animation(Theme.spring, value: errorMessage)
@@ -113,13 +139,14 @@ struct ImportCertificateView: View {
                 }
             }
             .fileImporter(
-                isPresented: Binding(get: { picking != nil }, set: { if !$0 { picking = nil } }),
-                allowedContentTypes: allowedTypes
+                isPresented: $showImporter,
+                allowedContentTypes: [.item],
+                allowsMultipleSelection: false
             ) { result in
-                let target = picking
-                picking = nil
-                handlePick(result, target: target)
+                handlePick(result, target: pendingKind)
             }
+            // The sheet covers the root toast overlay, so host toasts here too.
+            .modifier(ToastHost(center: toasts))
         }
         .interactiveDismissDisabled(isImporting)
     }
@@ -133,37 +160,64 @@ struct ImportCertificateView: View {
         return profileFile?.name ?? "Tap to choose"
     }
 
-    private var allowedTypes: [UTType] {
-        switch picking {
-        case .p12: return [.pkcs12, .data]
-        case .profile: return [UTType(filenameExtension: "mobileprovision") ?? .data, .data]
-        case .none: return [.data]
-        }
+    private func openPicker(_ kind: PickTarget) {
+        pendingKind = kind
+        showImporter = true
     }
 
-    private func handlePick(_ result: Result<URL, Error>, target: PickTarget?) {
-        guard case .success(let url) = result, let target else { return }
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url) else {
-            fail("Couldn't read \(url.lastPathComponent).")
+    private func handlePick(_ result: Result<[URL], Error>, target: PickTarget) {
+        let url: URL
+        switch result {
+        case .failure(let error):
+            debugLine = "Debug: [\(target)] picker error: \(error.localizedDescription)"
+            fail("Couldn't open the file: \(error.localizedDescription)")
+            return
+        case .success(let urls):
+            guard let first = urls.first else {
+                debugLine = "Debug: [\(target)] picker returned no file"
+                fail("No file was selected.")
+                return
+            }
+            url = first
+        }
+
+        let name = url.lastPathComponent
+        let ext = url.pathExtension.lowercased()
+        guard target.allowedExtensions.contains(ext) else {
+            debugLine = "Debug: [\(target)] \(name) → rejected (extension .\(ext))"
+            fail("\(name) isn't a \(target.label).")
             return
         }
+
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            debugLine = "Debug: [\(target)] \(name) → read failed (scoped: \(scoped)): \(error.localizedDescription)"
+            fail("Couldn't read \(name): \(error.localizedDescription)")
+            return
+        }
+
         errorMessage = nil
         switch target {
         case .p12:
-            p12 = PickedFile(name: url.lastPathComponent, data: data)
-            Haptics.success()
+            p12 = PickedFile(name: name, data: data)
+            debugLine = "Debug: [p12] \(name) → OK, \(data.count) bytes"
+            toasts.show("Certificate file selected", kind: .success)
         case .profile:
             do {
                 let parsed = try ProfileParser.parse(data: data)
-                profileFile = PickedFile(name: url.lastPathComponent, data: data)
+                profileFile = PickedFile(name: name, data: data)
                 withAnimation(Theme.spring) { profilePreview = parsed }
                 if nickname.isEmpty { nickname = parsed.name }
-                Haptics.success()
+                debugLine = "Debug: [profile] \(name) → OK, \(data.count) bytes, \"\(parsed.name)\""
+                toasts.show("Profile loaded: \(parsed.name)", kind: .success)
             } catch {
                 profileFile = nil
                 profilePreview = nil
+                debugLine = "Debug: [profile] \(name) → parse failed: \(error.localizedDescription)"
                 fail(error.localizedDescription)
             }
         }
@@ -188,13 +242,14 @@ struct ImportCertificateView: View {
             }
             dismiss()
         } catch {
+            debugLine = "Debug: import failed: \(error.localizedDescription)"
             fail(error.localizedDescription)
         }
     }
 
     private func fail(_ message: String) {
         errorMessage = message
-        Haptics.error()
+        toasts.show(message, kind: .error) // also plays the error haptic
         withAnimation(.linear(duration: 0.45)) { shakes += 1 }
     }
 }
