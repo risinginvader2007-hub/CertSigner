@@ -8,8 +8,78 @@ struct SigningIssue: Identifiable, Hashable {
     var id: String { message }
 }
 
+/// One row of the review sheet's checklist.
+struct PreSignCheck: Identifiable, Hashable {
+    enum State { case pass, fail, unknown }
+
+    let id: String
+    let title: String
+    let detail: String
+    let state: State
+}
+
 /// Pre-flight checks before signing. Plain Swift, unit-testable.
 enum SigningValidator {
+    /// The four checks shown in the review sheet (independent of the blocking issues list).
+    static func checks(
+        certificate: Certificate?,
+        bundleID: String,
+        originalBundleID: String,
+        extensionIDs: [String],
+        removeExtensions: Bool,
+        udid: String,
+        now: Date = Date()
+    ) -> [PreSignCheck] {
+        guard let certificate, let profile = certificate.profile else {
+            return [PreSignCheck(id: "cert", title: "Certificate", detail: "No usable certificate selected.", state: .fail)]
+        }
+        var result: [PreSignCheck] = []
+
+        switch certificate.status(now: now) {
+        case .expired:
+            result.append(PreSignCheck(id: "expiry", title: "Not expired", detail: "Expired \(certificate.expirationDate?.shortDate ?? "")", state: .fail))
+        case .expiringSoon(let days):
+            result.append(PreSignCheck(id: "expiry", title: "Not expired", detail: "Expires in \(days) day\(days == 1 ? "" : "s")", state: .pass))
+        case .valid(let days):
+            result.append(PreSignCheck(id: "expiry", title: "Not expired", detail: "\(days) days left", state: .pass))
+        case .unknown:
+            result.append(PreSignCheck(id: "expiry", title: "Not expired", detail: "Expiry date unknown", state: .unknown))
+        }
+
+        switch certificate.record.matchesProfile {
+        case .some(true):
+            result.append(PreSignCheck(id: "pair", title: ".p12 matches profile", detail: "The certificate is listed in the profile", state: .pass))
+        case .some(false):
+            result.append(PreSignCheck(id: "pair", title: ".p12 matches profile", detail: "This .p12 isn't in the profile", state: .fail))
+        case .none:
+            result.append(PreSignCheck(id: "pair", title: ".p12 matches profile", detail: "Couldn't verify (password or format)", state: .unknown))
+        }
+
+        let pattern = profile.bundleIDPattern
+        var bundleOK = isValidBundleID(bundleID) && self.bundleID(bundleID, matches: pattern)
+        var bundleDetail = bundleOK ? "\(bundleID) fits \(pattern)" : "\(bundleID) doesn't fit \(pattern)"
+        if bundleOK && !removeExtensions && !extensionIDs.isEmpty {
+            let finals = extensionIDs.map { AppBundlePatcher.nestedBundleID($0, oldMain: originalBundleID, newMain: bundleID) }
+            if finals.contains(where: { !self.bundleID($0, matches: pattern) }) {
+                bundleOK = false
+                bundleDetail = "App extensions don't fit \(pattern)"
+            }
+        }
+        result.append(PreSignCheck(id: "bundle", title: "Bundle ID allowed", detail: bundleDetail, state: bundleOK ? .pass : .fail))
+
+        let trimmed = udid.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            result.append(PreSignCheck(id: "device", title: "This iPhone in profile", detail: "Add your UDID in Settings to check", state: .unknown))
+        } else if profile.containsDevice(trimmed) == true {
+            result.append(PreSignCheck(id: "device", title: "This iPhone in profile",
+                                       detail: profile.provisionsAllDevices ? "Enterprise profile: all devices" : "UDID found",
+                                       state: .pass))
+        } else {
+            result.append(PreSignCheck(id: "device", title: "This iPhone in profile", detail: "UDID not in the profile", state: .fail))
+        }
+        return result
+    }
+
     /// Matches a bundle ID against a profile App ID pattern ("*", "com.foo.*", or exact).
     static func bundleID(_ bundleID: String, matches pattern: String) -> Bool {
         if pattern == "*" { return true }

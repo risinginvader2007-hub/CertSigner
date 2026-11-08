@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Options → validation → live signing progress → result.
+/// Review an imported IPA: options + certificate + pre-sign checks → queue the sign job.
 struct SignAppSheet: View {
     let app: LibraryApp
-    /// Quick Sign: start immediately with defaults if the pre-sign checks pass.
+    /// Quick Sign: queue immediately with defaults if the pre-sign checks pass.
     var autoStart: Bool = false
-    /// Remove the staged IPA if the sheet closes without a successful sign.
+    /// Remove the staged IPA if the sheet closes without queuing a job.
     var discardIfUnsigned: Bool = false
 
     @EnvironmentObject private var certificates: CertificateStore
@@ -13,21 +13,28 @@ struct SignAppSheet: View {
     @EnvironmentObject private var queue: SigningQueue
     @EnvironmentObject private var toasts: ToastCenter
     @EnvironmentObject private var router: TabRouter
+    @EnvironmentObject private var importer: ImportCoordinator
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.themeAccent) private var accent
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
+    @AppStorage(SettingsKeys.autoInstall) private var autoInstall = false
 
     @State private var certificateID: UUID?
     @State private var options = SigningOptions()
+    @State private var keepOriginalBundleID = false
+    @State private var prefilled = false
     /// True once the job is queued (the staged IPA must then be kept).
     @State private var started = false
     @State private var shakes = 0
+    @State private var appeared = false
 
     private var certificate: Certificate? {
         certificates.certificates.first { $0.id == certificateID }
     }
 
     private var effectiveBundleID: String {
-        options.trimmedBundleID.isEmpty ? app.bundleID : options.trimmedBundleID
+        if keepOriginalBundleID { return app.bundleID }
+        return options.trimmedBundleID.isEmpty ? app.bundleID : options.trimmedBundleID
     }
 
     private var issues: [SigningIssue] {
@@ -41,24 +48,45 @@ struct SignAppSheet: View {
         )
     }
 
-    private var hasErrors: Bool { issues.contains { $0.severity == .error } }
+    private var checks: [PreSignCheck] {
+        SigningValidator.checks(
+            certificate: certificate,
+            bundleID: effectiveBundleID,
+            originalBundleID: app.bundleID,
+            extensionIDs: app.extensions,
+            removeExtensions: options.removeExtensions,
+            udid: udid
+        )
+    }
+
+    private var errors: [SigningIssue] { issues.filter { $0.severity == .error } }
+    private var hasErrors: Bool { !errors.isEmpty }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     header
-                    certificateSection
-                    optionsSection
-                    if !issues.isEmpty { issuesSection }
-                    PrimaryButton(title: "Sign", systemImage: "signature") { start() }
-                        .disabled(hasErrors)
-                        .shake(shakes)
+                        .opacity(appeared ? 1 : 0)
+                        .scaleEffect(appeared ? 1 : 0.95)
+                    if certificates.certificates.isEmpty {
+                        noCertificateCard
+                    } else {
+                        certificateSection
+                        checksSection
+                        optionsSection
+                        if !errors.isEmpty { errorsSection }
+                        afterSigningSection
+                        PrimaryButton(title: hasErrors ? "Fix the issues above" : "Sign", systemImage: "signature") { start() }
+                            .disabled(hasErrors)
+                            .shake(shakes)
+                    }
                 }
                 .padding(Theme.padding)
-                .animation(Theme.spring, value: issues)
+                .animation(Theme.spring, value: checks)
+                .animation(Theme.spring, value: keepOriginalBundleID)
             }
-            .background(Theme.background.ignoresSafeArea())
+            .background(AmbientBackground())
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Review & Sign")
             .navigationBarTitleDisplayMode(.inline)
@@ -71,69 +99,166 @@ struct SignAppSheet: View {
         }
         .onAppear {
             prefill()
+            withAnimation(Theme.bouncy.delay(0.05)) { appeared = true }
             if autoStart && !started {
                 if hasErrors {
-                    toasts.show("Quick Sign needs your attention: review the issues below.", kind: .warning)
+                    toasts.show("Quick Sign needs your attention: review the checks.", kind: .warning)
                 } else {
                     start()
                 }
             }
         }
         .onDisappear {
-            // Not queued → the staged IPA isn't needed any more.
             if discardIfUnsigned && !started {
                 library.delete(app)
             }
         }
         .onChange(of: certificateID) { _ in
+            guard prefilled, !keepOriginalBundleID else { return }
             options.bundleID = SigningValidator.suggestedBundleID(appBundleID: app.bundleID, profile: certificate?.profile)
+        }
+        .onChange(of: keepOriginalBundleID) { keep in
+            options.bundleID = keep ? "" : SigningValidator.suggestedBundleID(appBundleID: app.bundleID, profile: certificate?.profile)
+            Haptics.selection()
         }
     }
 
     // MARK: Sections
 
     private var header: some View {
-        HStack(spacing: 14) {
-            AppIconView(image: library.icons[app.id], name: app.name, size: 56)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(app.name).font(.headline)
-                Text("\(app.bundleID) · v\(app.version)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+        VStack(spacing: 10) {
+            AppIconView(image: library.icons[app.id], name: app.name, size: 88)
+            Text(app.name)
+                .font(.title3.weight(.bold))
+                .multilineTextAlignment(.center)
+            Text(app.bundleID)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            HStack(spacing: 8) {
+                StatusBadge(text: "v\(app.version)", kind: .info)
+                StatusBadge(text: app.size.byteString, systemImage: "internaldrive", kind: .neutral)
+                if !app.extensions.isEmpty {
+                    StatusBadge(text: "\(app.extensions.count) ext.", systemImage: "puzzlepiece.extension", kind: .neutral)
+                }
             }
-            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+    }
+
+    private var noCertificateCard: some View {
+        Card {
+            VStack(spacing: 12) {
+                Image(systemName: "checkmark.seal").font(.largeTitle).foregroundColor(accent)
+                Text("Add a certificate to sign").font(.headline)
+                Text("Import your .p12 and matching profile, then come back to this app.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                PrimaryButton(title: "Add Certificate", systemImage: "plus") {
+                    dismiss()
+                    importer.showCertificateImport = true
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
     }
 
     private var certificateSection: some View {
         CardSection("Certificate", systemImage: "checkmark.seal") {
-            Picker("Certificate", selection: $certificateID) {
-                ForEach(certificates.certificates) { cert in
-                    Text(cert.nickname).tag(Optional(cert.id))
-                }
-            }
-            .pickerStyle(.menu)
-            if let certificate {
-                HStack(spacing: 8) {
-                    CertificateStatusBadge(status: certificate.status())
-                    if let type = certificate.profile?.type {
-                        StatusBadge(text: type.rawValue, kind: .neutral)
+            HStack(spacing: 12) {
+                CertificateGlyph(seed: certificate?.nickname ?? "?", size: 40)
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker("Certificate", selection: $certificateID) {
+                        ForEach(certificates.certificates) { cert in
+                            Text(cert.nickname).tag(Optional(cert.id))
+                        }
                     }
-                    Spacer()
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    if let certificate {
+                        HStack(spacing: 6) {
+                            CertificateStatusBadge(status: certificate.status())
+                            if let type = certificate.profile?.type {
+                                StatusBadge(text: type.rawValue, kind: .neutral)
+                            }
+                        }
+                    }
                 }
-                if let profile = certificate.profile {
-                    InfoRow(label: "App ID", value: profile.bundleIDPattern, monospaced: true)
-                }
+                Spacer()
+            }
+            if let profile = certificate?.profile {
+                Divider()
+                InfoRow(label: "App ID", value: profile.bundleIDPattern)
             }
         }
     }
 
+    private var checksSection: some View {
+        CardSection("Pre-sign Checks", systemImage: "checklist") {
+            ForEach(checks) { check in
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: icon(for: check.state))
+                        .font(.title3)
+                        .foregroundColor(color(for: check.state))
+                        .frame(width: 24)
+                        .transition(.scale.combined(with: .opacity))
+                        .id("\(check.id)-\(check.state)")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(check.title).font(.subheadline.weight(.semibold))
+                        Text(check.detail)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(label(for: check.state))
+                if check.id != checks.last?.id { Divider() }
+            }
+        }
+    }
+
+    private func icon(for state: PreSignCheck.State) -> String {
+        switch state {
+        case .pass: return "checkmark.circle.fill"
+        case .fail: return "xmark.circle.fill"
+        case .unknown: return "questionmark.circle.fill"
+        }
+    }
+
+    private func color(for state: PreSignCheck.State) -> Color {
+        switch state {
+        case .pass: return Theme.success
+        case .fail: return Theme.danger
+        case .unknown: return Theme.warning
+        }
+    }
+
+    private func label(for state: PreSignCheck.State) -> String {
+        switch state {
+        case .pass: return "Passed"
+        case .fail: return "Failed"
+        case .unknown: return "Not checked"
+        }
+    }
+
     private var optionsSection: some View {
-        CardSection("Changes (optional)", systemImage: "slider.horizontal.3") {
+        CardSection("Signing Options", systemImage: "slider.horizontal.3") {
             labeledField("Display name", placeholder: app.name, text: $options.displayName)
             Divider()
-            labeledField("Bundle ID", placeholder: app.bundleID, text: $options.bundleID, monospaced: true)
+            Toggle(isOn: $keepOriginalBundleID) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Keep original bundle ID")
+                    Text(app.bundleID).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                }
+            }
+            if !keepOriginalBundleID {
+                labeledField("Bundle ID", placeholder: app.bundleID, text: $options.bundleID)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             Divider()
             labeledField("Version", placeholder: app.version, text: $options.version)
             if !app.extensions.isEmpty {
@@ -153,24 +278,35 @@ struct SignAppSheet: View {
         }
     }
 
-    private func labeledField(_ title: String, placeholder: String, text: Binding<String>, monospaced: Bool = false) -> some View {
+    private var afterSigningSection: some View {
+        CardSection("After Signing", systemImage: "arrow.down.app") {
+            Toggle(isOn: $autoInstall) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Install when done")
+                    Text("Opens the iOS install prompt as soon as signing finishes")
+                        .font(.caption).foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    private func labeledField(_ title: String, placeholder: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.secondary)
             TextField(placeholder, text: text)
-                .font(monospaced ? .system(.body, design: .monospaced) : .body)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         }
     }
 
-    private var issuesSection: some View {
+    private var errorsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(issues) { issue in
+            ForEach(errors) { issue in
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: issue.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-                        .foregroundColor(issue.severity == .error ? Theme.danger : Theme.warning)
+                    Image(systemName: "xmark.octagon.fill")
+                        .foregroundColor(Theme.danger)
                     Text(issue.message)
                         .font(.footnote)
                         .fixedSize(horizontal: false, vertical: true)
@@ -182,16 +318,20 @@ struct SignAppSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
-                .fill((hasErrors ? Theme.danger : Theme.warning).opacity(0.1))
+                .fill(Theme.danger.opacity(0.1))
         )
     }
 
     // MARK: Actions
 
     private func prefill() {
-        guard certificateID == nil else { return }
+        guard !prefilled else { return }
         certificateID = certificates.activeID ?? certificates.certificates.first?.id
-        options.bundleID = SigningValidator.suggestedBundleID(appBundleID: app.bundleID, profile: certificate?.profile)
+        options.removeExtensions = SettingsKeys.bool(SettingsKeys.defaultRemoveExtensions, default: false) && !app.extensions.isEmpty
+        let keep = SettingsKeys.bool(SettingsKeys.defaultKeepBundleID, default: false)
+        keepOriginalBundleID = keep
+        options.bundleID = keep ? "" : SigningValidator.suggestedBundleID(appBundleID: app.bundleID, profile: certificate?.profile)
+        prefilled = true
     }
 
     private func start() {
@@ -201,10 +341,11 @@ struct SignAppSheet: View {
             return
         }
         var finalOptions = options
-        if finalOptions.trimmedBundleID == app.bundleID { finalOptions.bundleID = "" }
+        if keepOriginalBundleID || finalOptions.trimmedBundleID == app.bundleID { finalOptions.bundleID = "" }
         started = true
         queue.enqueue(app: app, certificateID: certificate.id, options: finalOptions)
         Haptics.impact(.medium)
+        toasts.show("Signing \(app.name)…", kind: .info)
         router.attentionOnly = false
         withAnimation(Theme.spring) { router.tab = .library }
         dismiss()
