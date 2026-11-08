@@ -42,6 +42,7 @@ struct HomeView: View {
                 .animation(Theme.spring, value: attentionApps)
             }
             .background(AmbientBackground())
+            .refreshable { await refreshHome() }
             .navigationTitle("Home")
             .floatingTabBarInset()
             .sheet(isPresented: $showPicker) {
@@ -59,6 +60,13 @@ struct HomeView: View {
         .onAppear {
             withAnimation(Theme.spring.delay(0.05)) { appeared = true }
         }
+    }
+
+    private func refreshHome() async {
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        certificates.reload()
+        signedApps.load()
+        Haptics.impact(.light)
     }
 
     // MARK: Stats

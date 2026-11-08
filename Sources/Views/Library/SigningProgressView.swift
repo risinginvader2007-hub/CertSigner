@@ -80,7 +80,7 @@ struct SigningProgressView: View {
                     LazyVStack(alignment: .leading, spacing: 4) {
                         ForEach(log) { line in
                             Text(line.text)
-                                .font(.system(.caption, design: .monospaced))
+                                .font(.system(.caption, design: .rounded))
                                 .foregroundColor(line.isError ? Theme.danger : .secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .id(line.id)

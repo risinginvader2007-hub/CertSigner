@@ -95,6 +95,7 @@ struct LibraryView: View {
     }
 
     var body: some View {
+        let apps = visibleApps
         NavigationStack(path: $path) {
             List {
                 if queue.tasks.isEmpty && signedApps.apps.isEmpty {
@@ -110,14 +111,14 @@ struct LibraryView: View {
                     }
                 } else {
                     if !queue.tasks.isEmpty { signingSection }
-                    signedSection
+                    signedSection(apps)
                 }
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(Theme.background.ignoresSafeArea())
             .animation(Theme.spring, value: queue.tasks.map(\.id))
-            .animation(Theme.spring, value: visibleApps.map(\.id))
+            .animation(Theme.spring, value: apps.map(\.id))
             .searchable(text: $search, prompt: "Search signed apps")
             .refreshable { await reload() }
             .navigationTitle("Library")
@@ -194,7 +195,7 @@ struct LibraryView: View {
 
     // MARK: Signed
 
-    private var signedSection: some View {
+    private func signedSection(_ apps: [SignedApp]) -> some View {
         Section {
             if router.attentionOnly {
                 Button {
@@ -205,7 +206,7 @@ struct LibraryView: View {
                         .foregroundColor(Theme.warning)
                 }
             }
-            if visibleApps.isEmpty {
+            if apps.isEmpty {
                 if signedApps.apps.isEmpty {
                     Text("Nothing signed yet. Finished jobs appear here.")
                         .font(.subheadline)
@@ -224,7 +225,7 @@ struct LibraryView: View {
                     .padding(.vertical, 12)
                 }
             } else {
-                ForEach(visibleApps) { app in
+                ForEach(apps) { app in
                     SignedAppListRow(
                         app: app,
                         icon: signedApps.icons[app.id],
@@ -257,7 +258,7 @@ struct LibraryView: View {
                 Text("Signed Apps")
                 Spacer()
                 if !signedApps.apps.isEmpty {
-                    Text("\(visibleApps.count)")
+                    Text("\(apps.count)")
                         .monospacedDigit()
                 }
             }

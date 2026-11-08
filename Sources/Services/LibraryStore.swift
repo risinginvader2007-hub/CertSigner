@@ -99,7 +99,8 @@ final class LibraryStore: ObservableObject {
                 // Normalise the (often CgBI-crushed) icon into a standard PNG.
                 var iconFileName: String?
                 var image: UIImage?
-                if let data = meta.iconData, let decoded = UIImage(data: data), let png = decoded.pngData() {
+                if let data = meta.iconData, let decoded = UIImage(data: data),
+                   let png = LibraryStore.downsampled(decoded, to: 180).pngData() {
                     try? png.write(to: folder.appendingPathComponent("icon.png"))
                     iconFileName = "icon.png"
                     image = UIImage(data: png)
@@ -123,6 +124,17 @@ final class LibraryStore: ObservableObject {
         if let image { icons[app.id] = image }
         saveIndex()
         return app
+    }
+
+    /// Shrinks large icons so long lists stay light on memory.
+    nonisolated static func downsampled(_ image: UIImage, to side: CGFloat) -> UIImage {
+        let size = image.size
+        guard size.width > side || size.height > side, size.width > 0, size.height > 0 else { return image }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { _ in
+            image.draw(in: CGRect(x: 0, y: 0, width: side, height: side))
+        }
     }
 
     // MARK: Mutations

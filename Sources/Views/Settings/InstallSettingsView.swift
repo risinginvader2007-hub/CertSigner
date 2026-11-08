@@ -83,7 +83,7 @@ struct InstallSettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(certificate.hostname)
-                        .font(.system(.subheadline, design: .monospaced))
+                        .font(.system(.subheadline, design: .rounded))
                     Spacer()
                     StatusBadge(
                         text: certificate.isValid() ? "Valid" : "Expired",

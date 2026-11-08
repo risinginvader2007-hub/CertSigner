@@ -239,7 +239,7 @@ struct InstallSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(session.log) { line in
                     Text(line.text)
-                        .font(.system(.caption2, design: .monospaced))
+                        .font(.system(.caption2, design: .rounded))
                         .foregroundColor(line.isError ? Theme.danger : .secondary)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)

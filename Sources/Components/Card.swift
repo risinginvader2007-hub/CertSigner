@@ -78,7 +78,7 @@ struct InfoRow: View {
                 .foregroundColor(.secondary)
             Spacer(minLength: 12)
             Text(value)
-                .font(monospaced ? .system(.subheadline, design: .monospaced) : .subheadline)
+                .font(monospaced ? .system(.subheadline, design: .rounded) : .subheadline)
                 .multilineTextAlignment(.trailing)
                 .textSelection(.enabled)
         }

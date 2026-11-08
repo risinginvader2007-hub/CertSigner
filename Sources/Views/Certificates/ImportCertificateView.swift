@@ -41,7 +41,6 @@ struct ImportCertificateView: View {
     @State private var profilePreview: ProvisioningProfile?
     @State private var showPicker = false
     @State private var pendingKind: PickTarget = .p12 // never cleared on dismiss
-    @State private var debugLine = "Debug: nothing picked yet"
     @State private var isImporting = false
     @State private var errorMessage: String?
     @State private var shakes = 0
@@ -120,14 +119,6 @@ struct ImportCertificateView: View {
                     }
                     .disabled(!canImport)
                     .shake(shakes)
-
-                    // TEMPORARY: remove once file picking is confirmed working.
-                    Text(debugLine)
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 4)
-                        .textSelection(.enabled)
                 }
                 .padding(Theme.padding)
                 .animation(Theme.spring, value: errorMessage)
@@ -144,15 +135,14 @@ struct ImportCertificateView: View {
             .sheet(isPresented: $showPicker) {
                 DocumentPicker(
                     contentTypes: [.item],
-                    onPresented: { debugLine = "Debug: [\(pendingKind.rawValue)] picker presented" },
                     onPick: { url in
                         showPicker = false
-                        debugLine = "Debug: [\(pendingKind.rawValue)] delegate: picked \(url.lastPathComponent)"
+                        AppLog.info("Certificate import: [\(pendingKind.rawValue)] delegate: picked \(url.lastPathComponent)")
                         readPicked(url, target: pendingKind)
                     },
                     onCancel: {
                         showPicker = false
-                        debugLine = "Debug: [\(pendingKind.rawValue)] delegate: cancelled"
+                        AppLog.info("Certificate import: [\(pendingKind.rawValue)] delegate: cancelled")
                     }
                 )
                 .ignoresSafeArea()
@@ -177,7 +167,7 @@ struct ImportCertificateView: View {
     private func openPicker(_ kind: PickTarget) {
         focused = nil
         pendingKind = kind
-        debugLine = "Debug: [\(kind.rawValue)] opening picker…"
+        AppLog.info("Certificate import: [\(kind.rawValue)] opening picker…")
         showPicker = true
     }
 
@@ -189,7 +179,7 @@ struct ImportCertificateView: View {
             let data = try Data(contentsOf: url)
             accept(PickedFile(name: name, data: data), target: target)
         } catch {
-            debugLine = "Debug: [\(target.rawValue)] \(name) → read failed: \(error.localizedDescription)"
+            AppLog.info("Certificate import: [\(target.rawValue)] \(name) → read failed: \(error.localizedDescription)")
             fail("Couldn't read \(name): \(error.localizedDescription)")
         }
     }
@@ -197,7 +187,7 @@ struct ImportCertificateView: View {
     /// Files shared into the app via "Open in" / Share → CertSigner.
     private func consumeIncoming() {
         for file in importer.takePendingCertificateFiles() {
-            debugLine = "Debug: open-in received \(file.name)"
+            AppLog.info("Certificate import: open-in received \(file.name)")
             guard let target = PickTarget.forExtension(file.pathExtension) else {
                 fail("\(file.name) isn't a certificate or profile.")
                 continue
@@ -209,7 +199,7 @@ struct ImportCertificateView: View {
     private func accept(_ file: PickedFile, target: PickTarget) {
         let ext = file.pathExtension
         guard target.allowedExtensions.contains(ext) else {
-            debugLine = "Debug: [\(target.rawValue)] \(file.name) → rejected (extension .\(ext))"
+            AppLog.info("Certificate import: [\(target.rawValue)] \(file.name) → rejected (extension .\(ext))")
             fail("\(file.name) isn't a \(target.label).")
             return
         }
@@ -218,7 +208,7 @@ struct ImportCertificateView: View {
         switch target {
         case .p12:
             p12 = file
-            debugLine = "Debug: [p12] \(file.name) → OK, \(file.data.count) bytes"
+            AppLog.info("Certificate import: [p12] \(file.name) → OK, \(file.data.count) bytes")
             toasts.show("Certificate file selected", kind: .success)
         case .profile:
             do {
@@ -226,12 +216,12 @@ struct ImportCertificateView: View {
                 profileFile = file
                 withAnimation(Theme.spring) { profilePreview = parsed }
                 if nickname.isEmpty { nickname = parsed.name }
-                debugLine = "Debug: [profile] \(file.name) → OK, \(file.data.count) bytes, \"\(parsed.name)\""
+                AppLog.info("Certificate import: [profile] \(file.name) → OK, \(file.data.count) bytes, \"\(parsed.name)\"")
                 toasts.show("Profile loaded: \(parsed.name)", kind: .success)
             } catch {
                 profileFile = nil
                 profilePreview = nil
-                debugLine = "Debug: [profile] \(file.name) → parse failed: \(error.localizedDescription)"
+                AppLog.info("Certificate import: [profile] \(file.name) → parse failed: \(error.localizedDescription)")
                 fail(error.localizedDescription)
             }
         }
@@ -256,7 +246,7 @@ struct ImportCertificateView: View {
             }
             dismiss()
         } catch {
-            debugLine = "Debug: import failed: \(error.localizedDescription)"
+            AppLog.info("Certificate import: import failed: \(error.localizedDescription)")
             fail(error.localizedDescription)
         }
     }

@@ -256,7 +256,7 @@ struct CertificateDetailView: View {
                             let isMine = !udid.isEmpty && ProvisioningProfile.normalize(device) == ProvisioningProfile.normalize(udid)
                             HStack {
                                 Text(device)
-                                    .font(.system(.caption, design: .monospaced))
+                                    .font(.system(.caption, design: .rounded))
                                     .foregroundColor(isMine ? accent : .primary)
                                     .textSelection(.enabled)
                                 if isMine {
@@ -284,9 +284,9 @@ struct CertificateDetailView: View {
                         ForEach(items) { item in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(item.key)
-                                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                                    .font(.system(.caption, design: .rounded).weight(.semibold))
                                 Text(item.value)
-                                    .font(.system(.caption2, design: .monospaced))
+                                    .font(.system(.caption2, design: .rounded))
                                     .foregroundColor(.secondary)
                                     .textSelection(.enabled)
                             }
