@@ -22,7 +22,7 @@ struct ProgressRing: View {
                     style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-                .animation(.spring(response: 0.6, dampingFraction: 0.85), value: clamped)
+                .animation(.linear(duration: 0.25), value: clamped)
             if showsPercentage {
                 Text("\(Int(clamped * 100))%")
                     .font(.system(.title2, design: .rounded).weight(.bold))
@@ -49,7 +49,7 @@ struct ProgressBar: View {
                 Capsule()
                     .fill(LinearGradient(colors: [(color ?? accent).opacity(0.75), color ?? accent], startPoint: .leading, endPoint: .trailing))
                     .frame(width: max(height, geo.size.width * CGFloat(min(max(progress, 0), 1))))
-                    .animation(.spring(response: 0.5, dampingFraction: 0.85), value: progress)
+                    .animation(.linear(duration: 0.25), value: progress)
             }
         }
         .frame(height: height)

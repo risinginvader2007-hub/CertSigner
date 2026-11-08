@@ -54,7 +54,10 @@ struct InstallSheet: View {
                     actions
                 }
                 .padding(Theme.padding)
-                .animation(Theme.spring, value: session.phase)
+                // Animate stage changes only: the phase also carries the transfer percentage, and
+                // springing the whole sheet on every tick made the numbers jitter.
+                .animation(Theme.spring, value: currentStage)
+                .animation(Theme.spring, value: failure)
             }
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle("Install")

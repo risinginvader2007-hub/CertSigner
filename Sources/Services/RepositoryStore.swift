@@ -7,6 +7,14 @@ struct RepoDownload: Equatable {
     var expected: Int64?
     /// True once the file is on disk and being imported into the library.
     var importing = false
+    var startedAt = Date()
+
+    /// Average speed since the start, in bytes per second (steady, unlike an instantaneous rate).
+    var bytesPerSecond: Double? {
+        let elapsed = Date().timeIntervalSince(startedAt)
+        guard elapsed > 0.5, received > 0 else { return nil }
+        return Double(received) / elapsed
+    }
 
     var progress: Double? {
         guard let expected, expected > 0 else { return nil }
@@ -178,7 +186,7 @@ final class RepositoryStore: ObservableObject {
             return
         }
 
-        downloads[key] = RepoDownload(received: 0, expected: build.size)
+        downloads[key] = RepoDownload(received: 0, expected: build.size, startedAt: Date())
         AppLog.info("Downloading \(app.name) \(build.version) from \(repo.name): \(build.downloadURL.absoluteString)")
 
         downloadTasks[key] = Task { [weak self] in

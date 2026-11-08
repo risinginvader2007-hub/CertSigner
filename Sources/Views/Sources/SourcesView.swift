@@ -459,7 +459,7 @@ struct GetButton: View {
             }
         }
         .buttonStyle(PressableButtonStyle(scale: 0.9))
-        .animation(Theme.spring, value: store.download(repoID: repo.id, app: app))
+        .animation(Theme.spring, value: store.download(repoID: repo.id, app: app)?.importing)
     }
 }
 

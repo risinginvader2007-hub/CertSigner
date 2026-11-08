@@ -40,7 +40,8 @@ struct SourceAppDetailView: View {
                         infoSection(app, repo: repo)
                     }
                     .padding(Theme.padding)
-                    .animation(Theme.spring, value: store.download(repoID: repo.id, app: app))
+                    // Animate only when a download starts / starts importing / ends — never on byte counts.
+                    .animation(Theme.spring, value: store.download(repoID: repo.id, app: app)?.importing)
                 }
                 .background(AmbientBackground())
                 .navigationTitle(app.name)
@@ -86,11 +87,15 @@ struct SourceAppDetailView: View {
                         Text(download.importing ? "Importing…" : "Downloading…")
                             .font(.subheadline.weight(.semibold))
                         Spacer()
-                        Text(progressText(download))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .monospacedDigit()
+                        if !download.importing {
+                            Text(progressText(download))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .monospacedDigit()
+                                .lineLimit(1)
+                        }
                     }
+                    .transaction { $0.animation = nil }
                     if let progress = download.progress, !download.importing {
                         ProgressBar(progress: progress)
                     } else {
@@ -252,9 +257,13 @@ struct SourceAppDetailView: View {
     }
 
     private func progressText(_ download: RepoDownload) -> String {
+        var text = download.received.byteString
         if let expected = download.expected, expected > 0 {
-            return "\(download.received.byteString) of \(expected.byteString)"
+            text += " of \(expected.byteString)"
         }
-        return download.received.byteString
+        if let speed = download.bytesPerSecond {
+            text += " · \(Int64(speed).byteString)/s"
+        }
+        return text
     }
 }
