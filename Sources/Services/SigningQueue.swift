@@ -25,6 +25,8 @@ struct SigningTask: Identifiable, Codable, Equatable {
     var status: Status
     var errorMessage: String?
     var createdAt: Date
+    /// nil = follow the "Install when done" setting.
+    var installWhenDone: Bool? = nil
 }
 
 /// Runs sign jobs one at a time in the background and feeds results into SignedAppsStore.
@@ -70,13 +72,14 @@ final class SigningQueue: ObservableObject {
     // MARK: Enqueue
 
     @discardableResult
-    func enqueue(app: LibraryApp, certificateID: UUID, options: SigningOptions) -> SigningTask {
+    func enqueue(app: LibraryApp, certificateID: UUID, options: SigningOptions, installWhenDone: Bool? = nil) -> SigningTask {
         let task = SigningTask(
             id: UUID(), name: options.trimmedDisplayName.isEmpty ? app.name : options.trimmedDisplayName,
             bundleID: options.trimmedBundleID.isEmpty ? app.bundleID : options.trimmedBundleID,
             version: options.trimmedVersion.isEmpty ? app.version : options.trimmedVersion,
             source: .library(app.id), certificateID: certificateID, options: options,
-            replacingSignedID: nil, status: .queued, errorMessage: nil, createdAt: Date()
+            replacingSignedID: nil, status: .queued, errorMessage: nil, createdAt: Date(),
+            installWhenDone: installWhenDone
         )
         add(task)
         return task
@@ -212,7 +215,7 @@ final class SigningQueue: ObservableObject {
         save()
         toasts.show("Signed \(signed.name)", kind: .success)
 
-        if SettingsKeys.bool(SettingsKeys.autoInstall, default: false) {
+        if task.installWhenDone ?? SettingsKeys.bool(SettingsKeys.autoInstall, default: false) {
             installRequest = signed
         }
     }

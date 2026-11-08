@@ -43,7 +43,14 @@ Open it in Safari on your iPhone, then share the file to FlareStore (or any sign
 - **Signed Apps**: icon, version, certificate used, status badge (valid / expiring / expired) and expiry countdown, with **Install**, **Re-sign** (with the active certificate, replaces the old copy) and **Share**. Swipe left to delete, right to re-sign. Search, sort (date, name, expiry) and filter (status, certificate).
 - The Library tab badge counts signed apps that are expiring or expired.
 
-### 5. Install
+### 5. Sources
+- **Sources tab → +**: paste a source URL (AltStore / SideStore / Feather JSON; the older ESign and Scarlet layouts work too). `altstore://source?url=…` links are accepted as well.
+- Browse a source or **All Apps**: icon, version, size, description, screenshots, version history.
+- **GET** downloads the IPA, signs it with your active certificate and defaults, and opens the install prompt. **Download & Review** opens Review & Sign first. Any older version can be picked from **Versions**.
+- Pull to refresh (sources also refresh on their own every 30 minutes while you browse); swipe to refresh or remove; Edit to reorder. Source apps show up in Search too.
+- Sources need `https://` links (iOS blocks plain http).
+
+### 6. Install
 - CertSigner serves the signed IPA from the phone's loopback interface and opens `itms-services://`; iOS shows its install prompt.
 - **Settings → Install** picks the method: *Automatic* (default), *Fully Local (HTTPS)* or *Semi-Local*.
   - Fully Local needs a trusted certificate for a hostname that resolves to 127.0.0.1: the public backloop.dev certificate (when valid) or your own domain (see below).
@@ -55,7 +62,7 @@ Open it in Safari on your iPhone, then share the file to FlareStore (or any sign
 3. Put `fullchain.pem` and `privkey.pem` (unencrypted) in Files, then Settings → Install → **Add My Own Certificate**.
 4. Renew before it expires (Let's Encrypt: 90 days) and import again.
 
-### 6. Settings
+### 7. Settings
 Certificates, signing defaults (remove extensions, keep bundle ID), install after signing, delete original IPA after signing, install method, UDID, appearance (system / light / dark), accent colour, **app icon** (Ocean, Sunset, Mint, Midnight), storage usage with Clear Cache and Remove Unused Imports, **Export Log File**, and About.
 
 ## Architecture
@@ -63,18 +70,18 @@ Certificates, signing defaults (remove extensions, keep bundle ID), install afte
 ```
 Sources/
   App/         CertSignerApp (stores wired in init), RootView (floating tab bar shell)
-  Models/      Certificate, ProvisioningProfile, LibraryApp, SigningOptions/SignedApp, SigningStep, InstallMethod
-  Services/    CertificateStore, LibraryStore (staged imports), SignedAppsStore, SigningQueue, SigningPipeline (worker),
+  Models/      Certificate, ProvisioningProfile, LibraryApp, Repository (+ parser), SigningOptions/SignedApp, SigningStep, InstallMethod
+  Services/    CertificateStore, LibraryStore (staged imports), SignedAppsStore, RepositoryStore (sources + downloads), SigningQueue, SigningPipeline (worker),
                AppBundlePatcher, SigningValidator, IPAInspector, ZSignService, InstallSession, LocalHTTPServer,
                ServerCertificateStore, Keychain, P12Inspector, DERCertificateParser, AppLog, StorageService
-  Views/       Home, Library, Certificates, Install, Settings
+  Views/       Home, Library, Sources, Certificates, Install, Settings, Search
   Components/  Theme, FloatingTabBar, PrimaryButton, Card, StatusBadge, ProgressRing/Bar, EmptyStateView,
                AppIconView, ToastView, DocumentPicker, Effects (shimmer, shake, checkmark draw-in, zoom transition)
   Resources/   Assets.xcassets (original app icons)
 Vendor/        zsign (MIT, patched for iOS) + Objective-C++ bridge + TLS helper — see Vendor/README.md
 ```
 
-Storage lives in the app's Documents folder: `Certificates/`, `Library/` (staged imports), `Signed/`, `Signing/queue.json`, `Server/`, `Logs/`.
+Storage lives in the app's Documents folder: `Certificates/`, `Library/` (staged imports), `Signed/`, `Signing/queue.json`, `Sources/sources.json`, `Server/`, `Logs/`.
 
 ## Limits of a sideloaded app
 - No UDID access (paste it in Settings).

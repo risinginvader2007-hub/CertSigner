@@ -28,7 +28,8 @@ struct RootView: View {
                     .roundedDesign()
             }
             .sheet(item: $importer.review) { request in
-                SignAppSheet(app: request.app, autoStart: request.quickSign, discardIfUnsigned: true)
+                SignAppSheet(app: request.app, autoStart: request.quickSign, discardIfUnsigned: true,
+                             installWhenDone: request.installWhenDone)
                     .roundedDesign()
             }
             .sheet(item: $queue.installRequest) { app in
@@ -75,6 +76,7 @@ private func tabScreen(_ tab: AppTab) -> some View {
     switch tab {
     case .home: HomeView()
     case .library: LibraryView()
+    case .sources: SourcesView()
     case .settings: SettingsView()
     case .search: SearchView()
     }
@@ -97,6 +99,9 @@ private struct NativeTabShell: View {
                 tabScreen(.library)
             }
             .badge(signedApps.attentionCount)
+            Tab(AppTab.sources.title, systemImage: AppTab.sources.systemImage, value: AppTab.sources) {
+                tabScreen(.sources)
+            }
             Tab(AppTab.settings.title, systemImage: AppTab.settings.systemImage, value: AppTab.settings) {
                 tabScreen(.settings)
             }

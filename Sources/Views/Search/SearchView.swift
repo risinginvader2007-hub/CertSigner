@@ -6,10 +6,12 @@ struct SearchView: View {
     private enum Route: Hashable {
         case app(UUID)
         case certificate(UUID)
+        case sourceApp(UUID, String)
     }
 
     @EnvironmentObject private var signedApps: SignedAppsStore
     @EnvironmentObject private var certificates: CertificateStore
+    @EnvironmentObject private var repositories: RepositoryStore
     @State private var query = ""
 
     private var trimmed: String { query.trimmingCharacters(in: .whitespaces).lowercased() }
@@ -30,6 +32,13 @@ struct SearchView: View {
         }
     }
 
+    private var sourceApps: [SourceEntry] {
+        guard !trimmed.isEmpty else { return [] }
+        return repositories.allApps.filter {
+            $0.app.name.lowercased().contains(trimmed) || $0.app.bundleID.lowercased().contains(trimmed)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -38,11 +47,11 @@ struct SearchView: View {
                         EmptyStateView(
                             systemImage: "magnifyingglass",
                             title: "Search",
-                            message: "Find signed apps by name or bundle ID, and certificates by nickname or team."
+                            message: "Find signed apps by name or bundle ID, certificates by nickname or team, and apps in your sources."
                         )
                         .listRowBackground(Color.clear)
                     }
-                } else if apps.isEmpty && matchingCertificates.isEmpty {
+                } else if apps.isEmpty && matchingCertificates.isEmpty && sourceApps.isEmpty {
                     Section {
                         Text("No results for “\(query)”.")
                             .foregroundColor(.secondary)
@@ -61,6 +70,15 @@ struct SearchView: View {
                                         Spacer()
                                         CertificateStatusBadge(status: app.status())
                                     }
+                                }
+                            }
+                        }
+                    }
+                    if !sourceApps.isEmpty {
+                        Section("Sources") {
+                            ForEach(sourceApps) { entry in
+                                NavigationLink(value: Route.sourceApp(entry.repo.id, entry.app.id)) {
+                                    SourceAppRow(repo: entry.repo, app: entry.app, showsSource: true)
                                 }
                             }
                         }
@@ -87,11 +105,12 @@ struct SearchView: View {
             }
             .animation(Theme.spring, value: trimmed)
             .navigationTitle("Search")
-            .searchable(text: $query, prompt: "Apps and certificates")
+            .searchable(text: $query, prompt: "Apps, certificates and sources")
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case .app(let id): SignedAppDetailView(appID: id)
                 case .certificate(let id): CertificateDetailView(certificateID: id)
+                case .sourceApp(let repoID, let appID): SourceAppDetailView(repoID: repoID, appID: appID)
                 }
             }
         }

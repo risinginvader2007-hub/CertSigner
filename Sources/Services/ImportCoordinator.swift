@@ -15,6 +15,8 @@ struct ReviewRequest: Identifiable {
     let app: LibraryApp
     /// Quick Sign: start signing with defaults as soon as the sheet opens.
     let quickSign: Bool
+    /// Show the install prompt after signing even if "Install when done" is off (Sources → Sign & Install).
+    var installWhenDone: Bool = false
 }
 
 @MainActor
@@ -23,7 +25,7 @@ final class ImportCoordinator: ObservableObject {
     @Published var review: ReviewRequest?
 
     /// Reads an IPA into the staging library, then opens the review sheet.
-    func importIPA(from url: URL, name: String, moveSource: Bool, quickSign: Bool,
+    func importIPA(from url: URL, name: String, moveSource: Bool, quickSign: Bool, installWhenDone: Bool = false,
                    library: LibraryStore, toasts: ToastCenter) async {
         guard url.pathExtension.lowercased() == "ipa" else {
             if moveSource { try? FileManager.default.removeItem(at: url) }
@@ -33,7 +35,7 @@ final class ImportCoordinator: ObservableObject {
         do {
             let app = try await library.importIPA(from: url, originalName: name, moveSource: moveSource)
             Haptics.success()
-            review = ReviewRequest(app: app, quickSign: quickSign)
+            review = ReviewRequest(app: app, quickSign: quickSign, installWhenDone: installWhenDone)
         } catch {
             if moveSource { try? FileManager.default.removeItem(at: url) }
             toasts.show("Couldn't import \(name): \(error.localizedDescription)", kind: .error)

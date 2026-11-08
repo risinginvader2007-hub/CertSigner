@@ -10,6 +10,7 @@ struct CertSignerApp: App {
     @StateObject private var toasts: ToastCenter
     @StateObject private var router = TabRouter()
     @StateObject private var importer = ImportCoordinator()
+    @StateObject private var repositories = RepositoryStore()
 
     init() {
         let certificates = CertificateStore()
@@ -37,6 +38,7 @@ struct CertSignerApp: App {
                 .environmentObject(toasts)
                 .environmentObject(router)
                 .environmentObject(importer)
+                .environmentObject(repositories)
         }
     }
 }

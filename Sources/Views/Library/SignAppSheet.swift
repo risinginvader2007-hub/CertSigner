@@ -7,6 +7,8 @@ struct SignAppSheet: View {
     var autoStart: Bool = false
     /// Remove the staged IPA if the sheet closes without queuing a job.
     var discardIfUnsigned: Bool = false
+    /// Install after signing regardless of the saved "Install when done" setting.
+    var installWhenDone: Bool = false
 
     @EnvironmentObject private var certificates: CertificateStore
     @EnvironmentObject private var library: LibraryStore
@@ -23,6 +25,7 @@ struct SignAppSheet: View {
     @State private var options = SigningOptions()
     @State private var keepOriginalBundleID = false
     @State private var prefilled = false
+    @State private var installAfter = false
     /// True once the job is queued (the staged IPA must then be kept).
     @State private var started = false
     @State private var shakes = 0
@@ -280,7 +283,10 @@ struct SignAppSheet: View {
 
     private var afterSigningSection: some View {
         CardSection("After Signing", systemImage: "arrow.down.app") {
-            Toggle(isOn: $autoInstall) {
+            Toggle(isOn: Binding(
+                get: { installAfter },
+                set: { installAfter = $0; autoInstall = $0 }
+            )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Install when done")
                     Text("Opens the iOS install prompt as soon as signing finishes")
@@ -331,6 +337,7 @@ struct SignAppSheet: View {
         let keep = SettingsKeys.bool(SettingsKeys.defaultKeepBundleID, default: false)
         keepOriginalBundleID = keep
         options.bundleID = keep ? "" : SigningValidator.suggestedBundleID(appBundleID: app.bundleID, profile: certificate?.profile)
+        installAfter = autoInstall || installWhenDone
         prefilled = true
     }
 
@@ -343,7 +350,7 @@ struct SignAppSheet: View {
         var finalOptions = options
         if keepOriginalBundleID || finalOptions.trimmedBundleID == app.bundleID { finalOptions.bundleID = "" }
         started = true
-        queue.enqueue(app: app, certificateID: certificate.id, options: finalOptions)
+        queue.enqueue(app: app, certificateID: certificate.id, options: finalOptions, installWhenDone: installAfter)
         Haptics.impact(.medium)
         toasts.show("Signing \(app.name)…", kind: .info)
         router.attentionOnly = false

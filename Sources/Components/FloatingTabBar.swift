@@ -1,19 +1,20 @@
 import SwiftUI
 
 enum AppTab: String, CaseIterable, Identifiable, Hashable {
-    case home, library, settings
+    case home, library, sources, settings
     /// iOS 26+ only: the native Liquid Glass search tab.
     case search
 
     var id: String { rawValue }
 
     /// Tabs shown in the custom bar on iOS 16–25 (no search tab there).
-    static let barTabs: [AppTab] = [.home, .library, .settings]
+    static let barTabs: [AppTab] = [.home, .library, .sources, .settings]
 
     var title: String {
         switch self {
         case .home: return "Home"
         case .library: return "Library"
+        case .sources: return "Sources"
         case .settings: return "Settings"
         case .search: return "Search"
         }
@@ -23,6 +24,7 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
         switch self {
         case .home: return "house.fill"
         case .library: return "square.stack.3d.up.fill"
+        case .sources: return "shippingbox.fill"
         case .settings: return "gearshape.fill"
         case .search: return "magnifyingglass"
         }
