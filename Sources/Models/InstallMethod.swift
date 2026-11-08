@@ -61,7 +61,8 @@ enum InstallManifest {
             URLQueryItem(name: "fetchurl", value: packageURL.absoluteString)
         ]
         // URLComponents leaves "+" alone; encode it so it isn't read as a space.
-        components?.percentEncodedQuery = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        let encodedQuery = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        components?.percentEncodedQuery = encodedQuery
         return components?.url
     }
 
