@@ -85,3 +85,6 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: Sources/Bridging/CertSigner-Bridging-Header.h
         HEADER_SEARCH_PATHS: ["$(inherited)", "$(SRCROOT)/Vendor/ZSignBridge"]
         OTHER_LDFLAGS: ["$(inherited)", "-lc++"]
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "AppIcon-Sunset AppIcon-Mint AppIcon-Midnight"
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES

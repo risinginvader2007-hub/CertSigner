@@ -2,13 +2,23 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var certificates: CertificateStore
+    @EnvironmentObject private var library: LibraryStore
+    @EnvironmentObject private var queue: SigningQueue
+    @EnvironmentObject private var importer: ImportCoordinator
     @EnvironmentObject private var toasts: ToastCenter
-    @EnvironmentObject private var router: TabRouter
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
     @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .blue
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
     @AppStorage(SettingsKeys.installMethod) private var installMethod: InstallMethod = .automatic
-    @State private var cacheSize: Int64 = 0
+    @AppStorage(SettingsKeys.autoInstall) private var autoInstall = false
+    @AppStorage(SettingsKeys.deleteOriginal) private var deleteOriginal = true
+    @AppStorage(SettingsKeys.defaultRemoveExtensions) private var defaultRemoveExtensions = false
+    @AppStorage(SettingsKeys.defaultKeepBundleID) private var defaultKeepBundleID = false
+
+    @State private var storage: [StorageItem] = []
+    @State private var loadingStorage = true
+    @State private var logURL: URL?
+    @State private var confirmClearImports = false
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -19,102 +29,273 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Appearance") {
-                    Picker("Theme", selection: $appearance) {
-                        ForEach(AppearanceOption.allCases) { option in
-                            Text(option.title).tag(option)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .onChange(of: appearance) { _ in Haptics.selection() }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Accent colour")
-                        AccentPicker(selection: $accent)
-                    }
-                    .padding(.vertical, 4)
-                }
-
-                Section {
-                    TextField("Paste your UDID", text: $udid)
-                        .font(.system(.body, design: .monospaced))
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
-                    if !udid.isEmpty {
-                        Button("Clear UDID", role: .destructive) { udid = "" }
-                    }
-                } header: {
-                    Text("This Device")
-                } footer: {
-                    Text("Sideloaded apps can't read the UDID. Get it from a computer (Finder, iTunes or 3uTools) or a UDID website in Safari, then paste it here. It's only used to check whether this iPhone is in your profiles.")
-                }
-
-                Section("Certificates") {
-                    NavigationLink {
-                        CertificatesView()
-                    } label: {
-                        HStack {
-                            Label("Certificates", systemImage: "checkmark.seal")
-                            Spacer()
-                            Text(certificates.active?.nickname ?? "None")
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-
-                Section("Install") {
-                    NavigationLink {
-                        InstallSettingsView()
-                    } label: {
-                        HStack {
-                            Label("Install Method & Server", systemImage: "arrow.down.app")
-                            Spacer()
-                            Text(installMethod.title)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-
-                Section("Storage") {
-                    Button(role: .destructive) {
-                        CacheService.clear()
-                        withAnimation { cacheSize = CacheService.size() }
-                        toasts.show("Cache cleared", kind: .success)
-                    } label: {
-                        HStack {
-                            Label("Clear Cache", systemImage: "trash")
-                            Spacer()
-                            Text(cacheSize.byteString)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-
-                Section("About") {
-                    HStack {
-                        Text("Version")
-                        Spacer()
-                        Text(appVersion).foregroundColor(.secondary)
-                    }
-                    if let url = URL(string: "https://github.com/risinginvader2007-hub/CertSigner") {
-                        Link(destination: url) {
-                            Label("Source on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
-                        }
-                    }
-                    Text("CertSigner signs apps with your own certificates for your own devices.")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                }
-
-                Section {
-                    Label("App icon picker and log export arrive in a later stage.", systemImage: "hammer")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                }
+                certificatesSection
+                signingSection
+                installSection
+                deviceSection
+                appearanceSection
+                storageSection
+                logSection
+                aboutSection
             }
             .navigationTitle("Settings")
             .floatingTabBarInset()
-            .task { cacheSize = CacheService.size() }
+            .task { await refreshStorage() }
+            .refreshable { await refreshStorage() }
+        }
+    }
+
+    // MARK: Certificates
+
+    private var certificatesSection: some View {
+        Section {
+            NavigationLink {
+                CertificatesView()
+            } label: {
+                HStack(spacing: 12) {
+                    CertificateGlyph(seed: certificates.active?.nickname ?? "none", size: 34)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(certificates.active?.nickname ?? "No active certificate")
+                            .font(.body.weight(.semibold))
+                        Text("\(certificates.certificates.count) certificate\(certificates.certificates.count == 1 ? "" : "s")")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if let active = certificates.active {
+                        CertificateStatusBadge(status: active.status())
+                    }
+                }
+            }
+            if certificates.certificates.count > 1 {
+                Picker("Active", selection: Binding(
+                    get: { certificates.activeID },
+                    set: { id in
+                        certificates.setActive(id)
+                        Haptics.success()
+                    }
+                )) {
+                    ForEach(certificates.certificates) { cert in
+                        Text(cert.nickname).tag(Optional(cert.id))
+                    }
+                }
+            }
+            Button {
+                importer.showCertificateImport = true
+            } label: {
+                Label("Add Certificate", systemImage: "plus.circle.fill")
+            }
+        } header: {
+            Text("Certificates")
+        } footer: {
+            Text("Open Certificates to see details, rename or delete.")
+        }
+    }
+
+    // MARK: Signing
+
+    private var signingSection: some View {
+        Section {
+            Toggle(isOn: $autoInstall) {
+                Label("Install after signing", systemImage: "arrow.down.app")
+            }
+            Toggle(isOn: $deleteOriginal) {
+                Label("Delete original IPA after signing", systemImage: "trash")
+            }
+            Toggle(isOn: $defaultRemoveExtensions) {
+                Label("Remove app extensions by default", systemImage: "puzzlepiece.extension")
+            }
+            Toggle(isOn: $defaultKeepBundleID) {
+                Label("Keep original bundle ID by default", systemImage: "number")
+            }
+        } header: {
+            Text("Signing")
+        } footer: {
+            Text("Defaults pre-fill the review sheet and Quick Sign. Keeping the original bundle ID only works with wildcard profiles.")
+        }
+        .onChange(of: autoInstall) { _ in Haptics.selection() }
+        .onChange(of: deleteOriginal) { _ in Haptics.selection() }
+    }
+
+    private var installSection: some View {
+        Section("Install") {
+            NavigationLink {
+                InstallSettingsView()
+            } label: {
+                HStack {
+                    Label("Install Method & Server", systemImage: "server.rack")
+                    Spacer()
+                    Text(installMethod.title)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
+    private var deviceSection: some View {
+        Section {
+            TextField("Paste your UDID", text: $udid)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+            if !udid.isEmpty {
+                Button("Clear UDID", role: .destructive) { udid = "" }
+            }
+        } header: {
+            Text("This Device")
+        } footer: {
+            Text("Sideloaded apps can't read the UDID. Copy it from a computer (Finder or 3uTools), then paste it here. It's only used to check this iPhone is in your profiles.")
+        }
+    }
+
+    // MARK: Appearance
+
+    private var appearanceSection: some View {
+        Section("Appearance") {
+            Picker("Theme", selection: $appearance) {
+                ForEach(AppearanceOption.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: appearance) { _ in Haptics.selection() }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Accent colour")
+                AccentPicker(selection: $accent)
+            }
+            .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("App icon")
+                AppIconPicker()
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    // MARK: Storage
+
+    private var storageSection: some View {
+        Section {
+            if loadingStorage && storage.isEmpty {
+                ForEach(0..<3, id: \.self) { _ in
+                    HStack {
+                        SkeletonBlock(width: 120, height: 14)
+                        Spacer()
+                        SkeletonBlock(width: 50, height: 14)
+                    }
+                }
+            } else {
+                ForEach(storage) { item in
+                    HStack {
+                        Label(item.title, systemImage: item.systemImage)
+                        Spacer()
+                        Text(item.bytes.byteString)
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                HStack {
+                    Text("Total").fontWeight(.semibold)
+                    Spacer()
+                    Text(storage.reduce(0) { $0 + $1.bytes }.byteString)
+                        .fontWeight(.semibold)
+                        .monospacedDigit()
+                }
+            }
+            Button(role: .destructive) {
+                CacheService.clear()
+                toasts.show("Cache cleared", kind: .success)
+                Task { await refreshStorage() }
+            } label: {
+                Label("Clear Cache", systemImage: "sparkles")
+            }
+            Button(role: .destructive) {
+                confirmClearImports = true
+            } label: {
+                Label("Remove Unused Imported IPAs", systemImage: "trash")
+            }
+        } header: {
+            Text("Storage")
+        }
+        .confirmationDialog("Remove imported IPAs that aren't waiting to be signed?", isPresented: $confirmClearImports, titleVisibility: .visible) {
+            Button("Remove", role: .destructive) { removeUnusedImports() }
+        }
+    }
+
+    private func refreshStorage() async {
+        loadingStorage = true
+        let items = await Task.detached(priority: .utility) { StorageService.usage() }.value
+        withAnimation(Theme.spring) {
+            storage = items
+            loadingStorage = false
+        }
+    }
+
+    private func removeUnusedImports() {
+        let pending = Set(queue.tasks.compactMap { task -> UUID? in
+            if case .library(let id) = task.source { return id }
+            return nil
+        })
+        let unused = library.apps.filter { !pending.contains($0.id) }
+        unused.forEach { library.delete($0) }
+        toasts.show("Removed \(unused.count) imported IPA\(unused.count == 1 ? "" : "s")", kind: .success)
+        Task { await refreshStorage() }
+    }
+
+    // MARK: Log
+
+    private var logSection: some View {
+        Section {
+            if let logURL {
+                ShareLink(item: logURL) {
+                    Label("Export Log File", systemImage: "square.and.arrow.up")
+                }
+            } else {
+                Label("Preparing log…", systemImage: "doc.text")
+                    .foregroundColor(.secondary)
+            }
+            Button(role: .destructive) {
+                AppLog.clear()
+                toasts.show("Log cleared", kind: .success)
+                Task {
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    logURL = AppLog.exportCopy()
+                }
+            } label: {
+                Label("Clear Log", systemImage: "trash")
+            }
+        } header: {
+            Text("Diagnostics")
+        } footer: {
+            Text("The log records imports, signing and install events. It never contains passwords.")
+        }
+        .task { logURL = AppLog.exportCopy() }
+    }
+
+    // MARK: About
+
+    private var aboutSection: some View {
+        Section {
+            HStack {
+                Text("Version")
+                Spacer()
+                Text(appVersion).foregroundColor(.secondary)
+            }
+            if let url = URL(string: "https://github.com/risinginvader2007-hub/CertSigner") {
+                Link(destination: url) {
+                    Label("Source on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Built with zsign (MIT), OpenSSL and ZIPFoundation.")
+                Text("CertSigner signs apps with your own certificates for your own devices.")
+            }
+            .font(.footnote)
+            .foregroundColor(.secondary)
+        } header: {
+            Text("About")
         }
     }
 }
@@ -154,6 +335,82 @@ struct AccentPicker: View {
                 }
             }
             .padding(.vertical, 2)
+        }
+    }
+}
+
+/// Alternate app icons declared in the asset catalog (see project.yml).
+struct AppIconPicker: View {
+    private struct Option: Identifiable {
+        let id: String
+        let title: String
+        /// nil = primary icon.
+        let iconName: String?
+        let preview: String
+    }
+
+    private let options = [
+        Option(id: "default", title: "Ocean", iconName: nil, preview: "IconPreview-Default"),
+        Option(id: "sunset", title: "Sunset", iconName: "AppIcon-Sunset", preview: "IconPreview-Sunset"),
+        Option(id: "mint", title: "Mint", iconName: "AppIcon-Mint", preview: "IconPreview-Mint"),
+        Option(id: "midnight", title: "Midnight", iconName: "AppIcon-Midnight", preview: "IconPreview-Midnight")
+    ]
+
+    @EnvironmentObject private var toasts: ToastCenter
+    @Environment(\.themeAccent) private var accent
+    @State private var current: String?
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(options) { option in
+                    let selected = current == option.iconName
+                    Button {
+                        select(option)
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(option.preview)
+                                .resizable()
+                                .frame(width: 58, height: 58)
+                                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .strokeBorder(accent, lineWidth: selected ? 3 : 0)
+                                        .padding(-4)
+                                )
+                                .scaleEffect(selected ? 1.04 : 1)
+                            Text(option.title)
+                                .font(.caption2.weight(selected ? .bold : .regular))
+                                .foregroundColor(selected ? accent : .secondary)
+                        }
+                        .padding(4)
+                    }
+                    .buttonStyle(PressableButtonStyle(scale: 0.9))
+                    .accessibilityLabel("\(option.title) icon")
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
+            .padding(.vertical, 4)
+            .animation(Theme.bouncy, value: current)
+        }
+        .onAppear { current = UIApplication.shared.alternateIconName }
+    }
+
+    private func select(_ option: Option) {
+        guard UIApplication.shared.supportsAlternateIcons else {
+            toasts.show("This install doesn't support alternate icons.", kind: .warning)
+            return
+        }
+        guard current != option.iconName else { return }
+        UIApplication.shared.setAlternateIconName(option.iconName) { error in
+            Task { @MainActor in
+                if let error {
+                    toasts.show("Couldn't change icon: \(error.localizedDescription)", kind: .error)
+                } else {
+                    current = option.iconName
+                    Haptics.success()
+                }
+            }
         }
     }
 }
