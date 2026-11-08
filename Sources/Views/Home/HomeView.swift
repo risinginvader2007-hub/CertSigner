@@ -15,6 +15,7 @@ struct HomeView: View {
     @State private var dropTargeted = false
     @State private var appeared = false
     @State private var dashPhase: CGFloat = 0
+    @State private var path: [HomeRoute] = []
     @State private var attentionGlow = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.themeGradient) private var gradient
@@ -23,7 +24,9 @@ struct HomeView: View {
     private var certificateNeedsAttention: Bool { certificates.active?.needsAttention ?? false }
 
     var body: some View {
-        NavigationStack {
+        // Path-based so pushed screens don't depend on the Manage link inside the certificate card
+        // staying alive while the certificate store publishes changes.
+        NavigationStack(path: $path) {
             ScrollView {
                 VStack(spacing: Space.x4 + 2) {
                     stats
@@ -51,6 +54,11 @@ struct HomeView: View {
             .background(AmbientBackground())
             .refreshable { await refreshHome() }
             .navigationTitle("Home")
+            .navigationDestination(for: HomeRoute.self) { route in
+                switch route {
+                case .certificates: CertificatesView()
+                }
+            }
             .sheet(isPresented: $showPicker) {
                 DocumentPicker(
                     contentTypes: [.item],
@@ -312,9 +320,7 @@ struct HomeView: View {
                                     .background(Capsule().fill(accent.opacity(0.14)))
                             }
                         }
-                        NavigationLink {
-                            CertificatesView()
-                        } label: {
+                        NavigationLink(value: HomeRoute.certificates) {
                             Label("Manage", systemImage: "slider.horizontal.3")
                                 .font(.subheadline.weight(.semibold))
                                 .padding(.horizontal, 14)
@@ -378,6 +384,11 @@ struct HomeView: View {
         }
         return true
     }
+}
+
+/// Screens Home pushes, declared at Home's NavigationStack root.
+enum HomeRoute: Hashable {
+    case certificates
 }
 
 struct StatCard: View {

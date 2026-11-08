@@ -24,7 +24,14 @@ struct CertificateDetailView: View {
             if let certificate {
                 content(certificate)
             } else {
-                EmptyStateView(systemImage: "questionmark.folder", title: "Certificate removed", message: "This certificate no longer exists.")
+                EmptyStateView(
+                    systemImage: "questionmark.folder",
+                    title: "Certificate not found",
+                    message: "This certificate isn't on this device any more. It may have been deleted.",
+                    actionTitle: "Back",
+                    actionSystemImage: "chevron.left",
+                    action: { dismiss() }
+                )
             }
         }
         .background(Theme.background.ignoresSafeArea())

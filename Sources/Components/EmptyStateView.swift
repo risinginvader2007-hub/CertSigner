@@ -5,6 +5,7 @@ struct EmptyStateView: View {
     let title: String
     let message: String
     var actionTitle: String? = nil
+    var actionSystemImage: String = "plus"
     var action: (() -> Void)? = nil
 
     @Environment(\.themeAccent) private var accent
@@ -49,7 +50,7 @@ struct EmptyStateView: View {
             .offset(y: appeared ? 0 : 10)
 
             if let actionTitle, let action {
-                PrimaryButton(title: actionTitle, systemImage: "plus", action: action)
+                PrimaryButton(title: actionTitle, systemImage: actionSystemImage, action: action)
                     .frame(maxWidth: 260)
                     .opacity(appeared ? 1 : 0)
             }

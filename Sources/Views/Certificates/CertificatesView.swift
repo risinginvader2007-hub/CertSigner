@@ -25,7 +25,11 @@ struct CertificatesView: View {
                         .padding(.top, 60)
                     } else {
                         ForEach(Array(certificates.certificates.enumerated()), id: \.element.id) { index, certificate in
-                            NavigationLink(value: certificate.id) {
+                            // View-based link: works from every stack that pushes this list (Home, Settings),
+                            // without needing a UUID navigationDestination visible from that stack.
+                            NavigationLink {
+                                CertificateDetailView(certificateID: certificate.id)
+                            } label: {
                                 CertificateCard(certificate: certificate, isActive: certificate.id == certificates.activeID)
                             }
                             .staggeredEntrance(index, active: appeared)
@@ -59,9 +63,6 @@ struct CertificatesView: View {
                     }
                     .accessibilityLabel("Import certificate")
                 }
-            }
-            .navigationDestination(for: UUID.self) { id in
-                CertificateDetailView(certificateID: id)
             }
         }
     }
