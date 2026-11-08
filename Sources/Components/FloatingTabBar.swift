@@ -175,17 +175,9 @@ extension View {
     }
 }
 
-/// Soft accent glow behind dashboard-style screens.
+/// Background for dashboard-style screens and sheets: the animated aurora (see DesignSystem.swift).
 struct AmbientBackground: View {
-    @Environment(\.themeAccent) private var accent
-
     var body: some View {
-        ZStack(alignment: .top) {
-            Theme.background
-            LinearGradient(colors: [accent.opacity(0.18), accent.opacity(0.04), .clear],
-                           startPoint: .top, endPoint: .center)
-                .frame(height: 420)
-        }
-        .ignoresSafeArea()
+        AuroraBackground()
     }
 }

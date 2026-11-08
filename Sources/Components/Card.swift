@@ -18,16 +18,48 @@ struct Card<Content: View>: View {
 }
 
 extension View {
+    /// Layered surface: depth fill, soft inner top highlight, gradient hairline border, gentle shadow.
     func cardBackground(cornerRadius: CGFloat = Theme.corner) -> some View {
-        background(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Theme.surface)
-                .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 4)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(Theme.hairline, lineWidth: 1)
-        )
+        modifier(CardSurface(cornerRadius: cornerRadius))
+    }
+}
+
+struct CardSurface: ViewModifier {
+    var cornerRadius: CGFloat
+    var glow: Color? = nil
+
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        let dark = scheme == .dark
+        let strong = contrast == .increased
+        return content
+            .background(
+                ZStack {
+                    shape.fill(Theme.surface)
+                    // Inner highlight: light catching the top edge.
+                    shape.fill(
+                        LinearGradient(colors: [Color.white.opacity(dark ? 0.055 : 0.5), .clear],
+                                       startPoint: .top, endPoint: .center)
+                    )
+                }
+                .shadow(color: (glow ?? .black).opacity(glow == nil ? (dark ? 0.35 : 0.07) : 0.28),
+                        radius: glow == nil ? 14 : 18, x: 0, y: glow == nil ? 6 : 8)
+            )
+            .overlay(
+                shape.strokeBorder(
+                    LinearGradient(
+                        colors: strong
+                            ? [Color.primary.opacity(0.35), Color.primary.opacity(0.25)]
+                            : [Color.white.opacity(dark ? 0.14 : 0.9), Color.primary.opacity(dark ? 0.04 : 0.07)],
+                        startPoint: .top, endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+                .allowsHitTesting(false)
+            )
     }
 }
 
@@ -50,8 +82,9 @@ struct CardSection<Content: View>: View {
                 Text(title.uppercased())
             }
             .font(.caption.weight(.semibold))
+            .tracking(0.6)
             .foregroundColor(.secondary)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, Space.x1)
             .accessibilityAddTraits(.isHeader)
 
             Card { VStack(alignment: .leading, spacing: 12) { content } }

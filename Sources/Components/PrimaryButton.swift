@@ -11,6 +11,13 @@ struct PrimaryButton: View {
 
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.themeAccent) private var accent
+    @Environment(\.themeGradient) private var themeGradient
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    /// The accent gradient, unless a screen overrode the accent (e.g. red for destructive actions).
+    private var fillColors: [Color] {
+        themeGradient.first == accent ? themeGradient : [accent.opacity(0.85), accent]
+    }
 
     var body: some View {
         Button {
@@ -27,14 +34,26 @@ struct PrimaryButton: View {
             }
             .font(.body)
             .frame(maxWidth: .infinity, minHeight: 22)
-            .padding(.vertical, 14)
-            .padding(.horizontal, 16)
+            .padding(.vertical, 15)
+            .padding(.horizontal, Space.x4)
             .foregroundColor(foreground)
             .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                // Inner highlight + hairline: the "lit edge" of the button.
+                RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(colors: [Color.white.opacity(style == .tinted ? 0.12 : 0.38),
+                                                Color.white.opacity(contrast == .increased ? 0.3 : 0.04)],
+                                       startPoint: .top, endPoint: .bottom),
+                        lineWidth: 1
+                    )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+            .ambientGlow(style == .tinted ? .clear : (style == .destructive ? Theme.danger : accent),
+                         radius: 14, opacity: isEnabled ? 0.38 : 0)
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(scale: 0.97))
         .opacity(isEnabled ? 1 : 0.45)
         .allowsHitTesting(!isLoading)
         .animation(Theme.spring, value: isLoading)
@@ -52,7 +71,7 @@ struct PrimaryButton: View {
     private var background: some View {
         switch style {
         case .filled:
-            LinearGradient(colors: [accent.opacity(0.85), accent], startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(colors: fillColors, startPoint: .topLeading, endPoint: .bottomTrailing)
         case .tinted:
             accent.opacity(0.14)
         case .destructive:

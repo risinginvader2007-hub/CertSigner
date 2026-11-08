@@ -7,7 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject private var importer: ImportCoordinator
     @EnvironmentObject private var toasts: ToastCenter
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
-    @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .blue
+    @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .aurora
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
     @AppStorage(SettingsKeys.installMethod) private var installMethod: InstallMethod = .automatic
     @AppStorage(SettingsKeys.autoInstall) private var autoInstall = false
@@ -312,7 +312,7 @@ struct AccentPicker: View {
                     } label: {
                         ZStack {
                             Circle()
-                                .fill(option.color)
+                                .fill(LinearGradient(colors: option.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
                                 .frame(width: 32, height: 32)
                             Circle()
                                 .strokeBorder(option.color, lineWidth: 2.5)

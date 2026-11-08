@@ -8,18 +8,29 @@ struct EmptyStateView: View {
     var action: (() -> Void)? = nil
 
     @Environment(\.themeAccent) private var accent
+    @Environment(\.themeGradient) private var gradient
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
+    @State private var floating = false
 
     var body: some View {
         VStack(spacing: 18) {
             ZStack {
+                // Soft halo
                 Circle()
-                    .fill(LinearGradient(colors: [accent.opacity(0.22), accent.opacity(0.08)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .fill(RadialGradient(colors: [accent.opacity(0.28), .clear], center: .center, startRadius: 10, endRadius: 90))
+                    .frame(width: 180, height: 180)
+                Circle()
+                    .fill(LinearGradient(colors: gradient.map { $0.opacity(0.22) }, startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
                     .frame(width: 112, height: 112)
                 Image(systemName: systemImage)
                     .font(.system(size: 46, weight: .semibold))
-                    .foregroundColor(accent)
+                    .accentGradientForeground(gradient)
+                    .symbolPulse(appeared)
             }
+            .frame(height: 140)
+            .offset(y: floating ? -4 : 4)
             .scaleEffect(appeared ? 1 : 0.7)
             .opacity(appeared ? 1 : 0)
             .accessibilityHidden(true)
@@ -46,7 +57,9 @@ struct EmptyStateView: View {
         .padding(32)
         .frame(maxWidth: .infinity)
         .onAppear {
-            withAnimation(Theme.bouncy.delay(0.05)) { appeared = true }
+            withAnimation(Motion.adaptive(Motion.bouncy, reduceMotion: reduceMotion).delay(0.05)) { appeared = true }
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true)) { floating = true }
         }
     }
 }

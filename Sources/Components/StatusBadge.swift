@@ -18,10 +18,12 @@ struct StatusBadge: View {
                 .lineLimit(1)
         }
         .font(.caption.weight(.semibold))
+        .monospacedDigit()
         .padding(.horizontal, 9)
         .padding(.vertical, 4)
         .foregroundColor(color)
-        .background(Capsule().fill(color.opacity(0.15)))
+        .background(Capsule().fill(color.opacity(0.14)))
+        .overlay(Capsule().strokeBorder(color.opacity(0.28), lineWidth: 0.75))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(text)
     }

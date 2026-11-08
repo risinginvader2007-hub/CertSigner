@@ -14,12 +14,13 @@ struct RootView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var queue: SigningQueue
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
-    @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .blue
+    @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .aurora
 
     var body: some View {
         shell
             .tint(accent.color)
             .environment(\.themeAccent, accent.color)
+            .environment(\.themeGradient, accent.gradient)
             .preferredColorScheme(appearance.colorScheme)
             .roundedDesign()
             .modifier(ToastHost(center: toasts))
