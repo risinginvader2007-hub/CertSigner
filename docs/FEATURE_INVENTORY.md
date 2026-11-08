@@ -33,12 +33,12 @@ Every item below must still exist and behave the same after each UI sub-stage.
 - [x] Signing log sheet per job (live log, steps, result; Retry for failed; Done)
 - [x] Attention-only filter banner ("Showing items that need attention. Tap to show all.")
 - [x] Signed Apps section: icon, name, version, certificate used, status badge, expiry countdown
-- [x] Row actions: Install, Re-sign, Share (ShareLink); swipe left Delete (with confirmation), swipe right Re-sign
+- [x] Row actions: Install, Re-sign, Share (ShareLink); swipe left Delete (instant, dissolve animation), swipe right Re-sign
 - [x] Sort (date / name / expiry), Status filter, Certificate filter, Clear Filters, "No signed apps match your filters"
 - [x] Search signed apps (inline `.searchable` on iOS 16–25)
 - [x] Pull to refresh
 - [x] Install sheet from a row
-- [x] Signed app detail: details card, Install, Re-sign, Share, Delete (confirmation), "App removed" state
+- [x] Signed app detail: details card, Install, Re-sign, Share, Delete (instant, page dissolves, then pops), "App removed" state
 
 ## Review & Sign sheet
 - [x] Header: icon, name, bundle ID, version badge, size badge, extension count badge
@@ -57,12 +57,13 @@ Every item below must still exist and behave the same after each UI sub-stage.
 - [x] Status icon per phase, status text (incl. transfer %), stage list (server → prompt → transfer → install) with progress bar
 - [x] Troubleshooting tips on failure, live log, Try Again, Install Settings, Done / Cancel
 - [x] One app-wide install session (re-shown sheet keeps the running install)
+- [x] Auto-close ~1 s after a successful install (Settings → Install → "Close install sheet automatically", on by default); failures never auto-close
 
 ## Certificates
-- [x] List with glyph, nickname, team, status; context menu Set as Active / Delete; swipe delete (confirmation)
+- [x] List with glyph, nickname, team, status; context menu Set as Active / Delete (instant, card dissolves)
 - [x] Empty state "No certificates" + import action; Import certificate toolbar button; pull to refresh
 - [x] Import sheet: nickname, .p12 picker, .mobileprovision picker, password, Import (validates password, keychain), Cancel; prefilled from shared files
-- [x] Detail: Set as Active, This Device check (UDID in profile / Open Settings), Provisioning Profile, Signing Certificate (matches profile), Password (Change), Devices, Entitlements, Rename (alert), Change Password (alert), Delete (confirmation), "Certificate removed" state
+- [x] Detail: Set as Active, This Device check (UDID in profile / Open Settings), Provisioning Profile, Signing Certificate (matches profile), Password (Change), Devices, Entitlements, Rename (alert), Change Password (alert), Delete (instant, page dissolves, then pops), "Certificate removed" state
 
 ## Sources
 - [x] Empty state + Add Source; toolbar + and Edit (reorder)
@@ -80,10 +81,10 @@ Every item below must still exist and behave the same after each UI sub-stage.
 ## Settings
 - [x] Certificates section: active picker, list link, Add Certificate
 - [x] Signing: Install after signing, Delete original IPA, Remove extensions by default, Keep bundle ID by default
-- [x] Install: Install Method & Server → method picker, backloop.dev update, public cert status, My Certificate (hostname, PEM files, save/remove), tips
+- [x] Install: Close install sheet automatically toggle; Install Method & Server → method picker, backloop.dev update, public cert status, My Certificate (hostname, PEM files, save/remove), tips
 - [x] This Device: UDID field, Clear UDID
 - [x] Appearance: Theme picker, Accent colour picker, App icon picker (Ocean / Sunset / Mint / Midnight)
-- [x] Storage: per-area usage, total, Clear Cache, Remove Unused Imported IPAs (confirmation)
+- [x] Storage: per-area usage, total, Clear Cache, Remove Unused Imported IPAs (instant)
 - [x] Diagnostics: Export Log File (ShareLink, preparing state), Clear Log
 - [x] About: version, Source on GitHub link
 - [x] Pull to refresh
