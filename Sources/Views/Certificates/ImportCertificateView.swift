@@ -71,7 +71,7 @@ struct ImportCertificateView: View {
                             systemImage: "key.fill",
                             isDone: p12 != nil
                         ) { openPicker(.p12) }
-                        Divider()
+                        SoftDivider()
                         FilePickRow(
                             title: "Provisioning profile",
                             subtitle: profileSubtitle,

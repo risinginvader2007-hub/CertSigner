@@ -10,7 +10,7 @@ struct SignedAppDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showInstall = false
-    @State private var confirmDelete = false
+    @State private var dissolvingOut = false
     @State private var appeared = false
 
     private var app: SignedApp? { signedApps.apps.first { $0.id == appID } }
@@ -58,15 +58,15 @@ struct SignedAppDetailView: View {
 
                 CardSection("Details", systemImage: "info.circle") {
                     InfoRow(label: "Certificate", value: app.certificateName)
-                    Divider()
+                    SoftDivider()
                     InfoRow(label: "Signed", value: app.signedAt.formatted(date: .abbreviated, time: .shortened))
-                    Divider()
+                    SoftDivider()
                     InfoRow(label: "Size", value: app.size.byteString)
                     if let expires = app.expiresAt {
-                        Divider()
+                        SoftDivider()
                         InfoRow(label: "Expires", value: expires.shortDate)
                     }
-                    Divider()
+                    SoftDivider()
                     InfoRow(label: "Bundle ID", value: app.bundleID, copyable: true)
                 }
                 .opacity(appeared ? 1 : 0)
@@ -87,7 +87,7 @@ struct SignedAppDetailView: View {
                         .buttonStyle(.bordered)
                         .buttonBorderShape(.roundedRectangle(radius: 16))
                     }
-                    PrimaryButton(title: "Delete", systemImage: "trash", style: .tinted) { confirmDelete = true }
+                    PrimaryButton(title: "Delete", systemImage: "trash", style: .tinted) { deleteNow(app) }
                         .environment(\.themeAccent, Theme.danger)
                 }
             }
@@ -96,12 +96,19 @@ struct SignedAppDetailView: View {
         .sheet(isPresented: $showInstall) {
             InstallSheet(app: app).sheetChrome()
         }
-        .confirmationDialog("Delete \(app.name)?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                signedApps.delete(app)
-                toasts.show("Deleted \(app.name)", kind: .success)
-                dismiss()
-            }
+        .dissolving(dissolvingOut)
+    }
+
+    /// No confirmation: the page dissolves, then the unchanged delete runs and the view pops.
+    private func deleteNow(_ app: SignedApp) {
+        guard !dissolvingOut else { return }
+        Haptics.impact(.light)
+        withAnimation(DeleteMotion.dissolve) { dissolvingOut = true }
+        Task {
+            try? await Task.sleep(nanoseconds: DeleteMotion.dissolveNanoseconds)
+            signedApps.delete(app)
+            toasts.show("Deleted \(app.name)", kind: .success)
+            dismiss()
         }
     }
 

@@ -105,6 +105,7 @@ enum SettingsKeys {
     static let deleteOriginal = "signing.deleteOriginal"
     static let defaultRemoveExtensions = "signing.defaultRemoveExtensions"
     static let defaultKeepBundleID = "signing.defaultKeepBundleID"
+    static let autoCloseInstall = "install.autoCloseSheet"
 
     static func bool(_ key: String, default value: Bool) -> Bool {
         UserDefaults.standard.object(forKey: key) as? Bool ?? value

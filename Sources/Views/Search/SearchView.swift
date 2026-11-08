@@ -42,6 +42,7 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             List {
+                Group {
                 if trimmed.isEmpty {
                     Section {
                         EmptyStateView(
@@ -102,6 +103,8 @@ struct SearchView: View {
                         }
                     }
                 }
+                }
+                .softRowSeparators()
             }
             .animation(Theme.spring, value: trimmed)
             .navigationTitle("Search")

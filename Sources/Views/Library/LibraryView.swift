@@ -58,7 +58,8 @@ struct LibraryView: View {
     @State private var path: [UUID] = []
     @State private var installTarget: SignedApp?
     @State private var logTarget: LogTarget?
-    @State private var pendingDelete: SignedApp?
+    /// Rows currently playing the delete dissolve.
+    @State private var deleting: Set<UUID> = []
     @Namespace private var zoom
 
     private var visibleApps: [SignedApp] {
@@ -99,6 +100,7 @@ struct LibraryView: View {
         let apps = visibleApps
         NavigationStack(path: $path) {
             List {
+                Group {
                 if queue.tasks.isEmpty && signedApps.apps.isEmpty {
                     Section {
                         EmptyStateView(
@@ -114,6 +116,8 @@ struct LibraryView: View {
                     if !queue.tasks.isEmpty { signingSection }
                     signedSection(apps)
                 }
+                }
+                .softRowSeparators()
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
@@ -134,18 +138,6 @@ struct LibraryView: View {
             .sheet(item: $logTarget) { target in
                 SigningLogSheet(taskID: target.id).sheetChrome()
             }
-            .confirmationDialog(
-                "Delete \(pendingDelete?.name ?? "app")?",
-                isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) {
-                    if let app = pendingDelete { delete(app) }
-                    pendingDelete = nil
-                }
-            } message: {
-                Text("Removes the signed IPA from CertSigner. Installed copies on your iPhone aren't affected.")
-            }
         }
     }
 
@@ -158,6 +150,18 @@ struct LibraryView: View {
         withAnimation(Theme.spring) { signedApps.delete(app) }
         Haptics.success()
         toasts.show("Deleted \(app.name)", kind: .success)
+    }
+
+    /// No confirmation: dissolve the row, then run the unchanged delete; the rest slide up with a spring.
+    private func dissolveDelete(_ app: SignedApp) {
+        guard !deleting.contains(app.id) else { return }
+        Haptics.impact(.light)
+        withAnimation(DeleteMotion.dissolve) { _ = deleting.insert(app.id) }
+        Task {
+            try? await Task.sleep(nanoseconds: DeleteMotion.dissolveNanoseconds)
+            delete(app)
+            deleting.remove(app.id)
+        }
     }
 
     // MARK: Signing
@@ -235,14 +239,17 @@ struct LibraryView: View {
                         onInstall: { installTarget = app },
                         onResign: { resign(app) }
                     )
+                    .dissolving(deleting.contains(app.id))
                     .zoomSource(id: app.id, in: zoom)
                     .listRowBackground(RowSurface())
                     .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            pendingDelete = app
+                        // Not `role: .destructive`: that makes List remove the row itself before the dissolve plays.
+                        Button {
+                            dissolveDelete(app)
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
+                        .tint(Theme.danger)
                     }
                     .swipeActions(edge: .leading) {
                         Button {

@@ -212,7 +212,7 @@ struct SourceAppDetailView: View {
                     .disabled(busy)
                     .accessibilityLabel("Get version \(version.version)")
                 }
-                if version.id != visible.last?.id { Divider() }
+                if version.id != visible.last?.id { SoftDivider() }
             }
             if app.versions.count > 3 {
                 Button(showAllVersions ? "Show fewer" : "Show all \(app.versions.count) versions") {
@@ -227,15 +227,15 @@ struct SourceAppDetailView: View {
         CardSection("Information", systemImage: "info.circle") {
             if !app.bundleID.isEmpty {
                 InfoRow(label: "Bundle ID", value: app.bundleID, copyable: true)
-                Divider()
+                SoftDivider()
             }
             if let developer = app.developer {
                 InfoRow(label: "Developer", value: developer)
-                Divider()
+                SoftDivider()
             }
             if let category = app.category {
                 InfoRow(label: "Category", value: category)
-                Divider()
+                SoftDivider()
             }
             InfoRow(label: "Source", value: repo.name)
         }

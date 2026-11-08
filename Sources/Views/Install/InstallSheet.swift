@@ -15,6 +15,8 @@ struct InstallSheet: View {
     /// signing) both copies show the same install, and nothing restarts the server iOS is talking to.
     @ObservedObject private var session = InstallSession.shared
     @State private var shakes = 0
+    @AppStorage(SettingsKeys.autoCloseInstall) private var autoClose = true
+    @State private var autoCloseTask: Task<Void, Never>?
 
     private enum Stage: Int, CaseIterable {
         case server, prompt, transfer, install
@@ -86,6 +88,19 @@ struct InstallSheet: View {
         .onChange(of: failure) { newValue in
             if newValue != nil { withAnimation(.linear(duration: 0.45)) { shakes += 1 } }
         }
+        // Success only (iOS took the whole app): show the checkmark ~1 s, then close.
+        // Failures never auto-close. The server keeps its existing post-install grace period and stops itself.
+        .onChange(of: session.phase == .installing) { installed in
+            autoCloseTask?.cancel()
+            guard installed, autoClose, session.appID == app.id else { return }
+            autoCloseTask = Task {
+                try? await Task.sleep(nanoseconds: 1_100_000_000)
+                guard !Task.isCancelled, session.phase == .installing else { return }
+                dismiss() // the success haptic already played when iOS took the app
+
+            }
+        }
+        .onDisappear { autoCloseTask?.cancel() }
     }
 
     private func begin() async {

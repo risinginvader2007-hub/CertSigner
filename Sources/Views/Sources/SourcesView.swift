@@ -8,6 +8,7 @@ struct SourcesView: View {
     var body: some View {
         NavigationStack {
             List {
+                Group {
                 if store.repositories.isEmpty {
                     Section {
                         EmptyStateView(
@@ -84,6 +85,8 @@ struct SourcesView: View {
                         .onMove { store.move(from: $0, to: $1) }
                     }
                 }
+                }
+                .softRowSeparators()
             }
             .scrollContentBackground(.hidden)
             .background(AuroraBackground(intensity: 0.55))
@@ -175,7 +178,7 @@ struct AddSourceSheet: View {
                             .submitLabel(.go)
                             .focused($focused)
                             .onSubmit { add() }
-                        Divider()
+                        SoftDivider()
                         Button {
                             if let pasted = UIPasteboard.general.string {
                                 text = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -263,6 +266,7 @@ struct RepositoryView: View {
         Group {
             if let repo {
                 List {
+                    Group {
                     if query.isEmpty {
                         Section {
                             header(repo)
@@ -277,6 +281,8 @@ struct RepositoryView: View {
                             SourceAppLink(repo: repo, app: app)
                         }
                     }
+                    }
+                    .softRowSeparators()
                 }
                 .scrollContentBackground(.hidden)
                 .background(AuroraBackground(intensity: 0.45))
@@ -350,6 +356,7 @@ struct AllSourceAppsView: View {
 
     var body: some View {
         List {
+            Group {
             let items = entries
             if items.isEmpty {
                 Text(query.isEmpty ? "Your sources have no apps." : "No apps match “\(query)”.")
@@ -358,6 +365,8 @@ struct AllSourceAppsView: View {
             ForEach(items) { entry in
                 SourceAppLink(repo: entry.repo, app: entry.app, showsSource: true)
             }
+            }
+            .softRowSeparators()
         }
         .scrollContentBackground(.hidden)
         .background(AuroraBackground(intensity: 0.45))

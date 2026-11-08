@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
     @AppStorage(SettingsKeys.installMethod) private var installMethod: InstallMethod = .automatic
     @AppStorage(SettingsKeys.autoInstall) private var autoInstall = false
+    @AppStorage(SettingsKeys.autoCloseInstall) private var autoCloseInstall = true
     @AppStorage(SettingsKeys.deleteOriginal) private var deleteOriginal = true
     @AppStorage(SettingsKeys.defaultRemoveExtensions) private var defaultRemoveExtensions = false
     @AppStorage(SettingsKeys.defaultKeepBundleID) private var defaultKeepBundleID = false
@@ -18,7 +19,6 @@ struct SettingsView: View {
     @State private var storage: [StorageItem] = []
     @State private var loadingStorage = true
     @State private var logURL: URL?
-    @State private var confirmClearImports = false
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -29,6 +29,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Group {
                 certificatesSection.listRowBackground(RowSurface())
                 signingSection.listRowBackground(RowSurface())
                 installSection.listRowBackground(RowSurface())
@@ -37,6 +38,8 @@ struct SettingsView: View {
                 storageSection.listRowBackground(RowSurface())
                 logSection.listRowBackground(RowSurface())
                 aboutSection.listRowBackground(RowSurface())
+                }
+                .softRowSeparators()
             }
             .scrollContentBackground(.hidden)
             .background(AuroraBackground(intensity: 0.5))
@@ -130,6 +133,10 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
             }
+            Toggle(isOn: $autoCloseInstall) {
+                Label("Close install sheet automatically", systemImage: "checkmark.rectangle.stack")
+            }
+            .onChange(of: autoCloseInstall) { _ in Haptics.selection() }
         }
     }
 
@@ -217,15 +224,13 @@ struct SettingsView: View {
                 Label("Clear Cache", systemImage: "sparkles")
             }
             Button(role: .destructive) {
-                confirmClearImports = true
+                Haptics.impact(.light)
+                withAnimation(Motion.smooth) { removeUnusedImports() }
             } label: {
                 Label("Remove Unused Imported IPAs", systemImage: "trash")
             }
         } header: {
             Text("Storage")
-        }
-        .confirmationDialog("Remove imported IPAs that aren't waiting to be signed?", isPresented: $confirmClearImports, titleVisibility: .visible) {
-            Button("Remove", role: .destructive) { removeUnusedImports() }
         }
     }
 

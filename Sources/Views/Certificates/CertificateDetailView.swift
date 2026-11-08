@@ -12,7 +12,7 @@ struct CertificateDetailView: View {
 
     @State private var showRename = false
     @State private var showPassword = false
-    @State private var confirmDelete = false
+    @State private var dissolvingOut = false
     @State private var draft = ""
 
     private var certificate: Certificate? {
@@ -71,14 +71,19 @@ struct CertificateDetailView: View {
         } message: {
             Text("The password is verified against the .p12 and stored in the Keychain.")
         }
-        .confirmationDialog("Delete \(certificate.nickname)?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                certificates.delete(certificate.id)
-                toasts.show("Deleted \(certificate.nickname)", kind: .success)
-                dismiss()
-            }
-        } message: {
-            Text("The .p12, profile and saved password are removed from this device.")
+        .dissolving(dissolvingOut)
+    }
+
+    /// No confirmation: the page dissolves, then the unchanged delete runs and the view pops.
+    private func deleteNow() {
+        guard let certificate, !dissolvingOut else { return }
+        Haptics.impact(.light)
+        withAnimation(DeleteMotion.dissolve) { dissolvingOut = true }
+        Task {
+            try? await Task.sleep(nanoseconds: DeleteMotion.dissolveNanoseconds)
+            certificates.delete(certificate.id)
+            toasts.show("Deleted \(certificate.nickname)", kind: .success)
+            dismiss()
         }
     }
 
@@ -165,25 +170,25 @@ struct CertificateDetailView: View {
     private func profileSection(_ profile: ProvisioningProfile) -> some View {
         CardSection("Provisioning Profile", systemImage: "doc.badge.gearshape") {
             InfoRow(label: "Name", value: profile.name)
-            Divider()
+            SoftDivider()
             InfoRow(label: "Type", value: profile.type.rawValue)
-            Divider()
+            SoftDivider()
             InfoRow(label: "Team ID", value: profile.teamID, monospaced: true, copyable: true)
-            Divider()
+            SoftDivider()
             InfoRow(label: "App ID", value: profile.bundleIDPattern, monospaced: true, copyable: true)
             if !profile.appIDName.isEmpty {
-                Divider()
+                SoftDivider()
                 InfoRow(label: "App ID name", value: profile.appIDName)
             }
             if let created = profile.creationDate {
-                Divider()
+                SoftDivider()
                 InfoRow(label: "Created", value: created.shortDate)
             }
             if let expires = profile.expirationDate {
-                Divider()
+                SoftDivider()
                 InfoRow(label: "Expires", value: expires.shortDate)
             }
-            Divider()
+            SoftDivider()
             InfoRow(label: "UUID", value: profile.uuid, monospaced: true, copyable: true)
         }
     }
@@ -193,21 +198,21 @@ struct CertificateDetailView: View {
             if let summary = certificate.record.signingCertificate {
                 if let name = summary.commonName {
                     InfoRow(label: "Name", value: name)
-                    Divider()
+                    SoftDivider()
                 }
                 if let unit = summary.organizationalUnit {
                     InfoRow(label: "Team", value: unit, monospaced: true)
-                    Divider()
+                    SoftDivider()
                 }
                 if let notAfter = summary.notAfter {
                     InfoRow(label: "Expires", value: notAfter.shortDate)
-                    Divider()
+                    SoftDivider()
                 }
             } else {
                 Text("Details unavailable: iOS couldn't open the .p12 with the saved password.")
                     .font(.footnote)
                     .foregroundColor(.secondary)
-                Divider()
+                SoftDivider()
             }
             if let matches = certificate.record.matchesProfile {
                 HStack {
@@ -219,7 +224,7 @@ struct CertificateDetailView: View {
                 }
                 .font(.subheadline)
                 .accessibilityElement(children: .combine)
-                Divider()
+                SoftDivider()
             }
             HStack {
                 Text("Password").foregroundColor(.secondary)
@@ -306,7 +311,7 @@ struct CertificateDetailView: View {
                 showRename = true
             }
             PrimaryButton(title: "Delete Certificate", systemImage: "trash", style: .tinted) {
-                confirmDelete = true
+                deleteNow()
             }
             .environment(\.themeAccent, Theme.danger)
         }

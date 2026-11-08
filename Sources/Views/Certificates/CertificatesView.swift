@@ -5,7 +5,8 @@ struct CertificatesView: View {
     @EnvironmentObject private var toasts: ToastCenter
     @EnvironmentObject private var importer: ImportCoordinator
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
-    @State private var pendingDelete: Certificate?
+    /// Cards currently playing the delete dissolve.
+    @State private var deleting: Set<UUID> = []
     @State private var appeared = false
 
     /// Pushed from Settings / Home, so no NavigationStack of its own.
@@ -28,8 +29,9 @@ struct CertificatesView: View {
                                 CertificateCard(certificate: certificate, isActive: certificate.id == certificates.activeID)
                             }
                             .staggeredEntrance(index, active: appeared)
+                            .dissolving(deleting.contains(certificate.id))
                             .buttonStyle(PressableButtonStyle(scale: 0.98))
-                            .transition(.asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity), removal: .opacity))
+                            .transition(.asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity), removal: .identity))
                             .contextMenu { menu(for: certificate) }
                         }
                         if udid.isEmpty {
@@ -61,21 +63,19 @@ struct CertificatesView: View {
             .navigationDestination(for: UUID.self) { id in
                 CertificateDetailView(certificateID: id)
             }
-            .confirmationDialog(
-                "Delete \(pendingDelete?.nickname ?? "certificate")?",
-                isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) {
-                    if let certificate = pendingDelete {
-                        certificates.delete(certificate.id)
-                        toasts.show("Deleted \(certificate.nickname)", kind: .success)
-                    }
-                    pendingDelete = nil
-                }
-            } message: {
-                Text("The .p12, profile and saved password are removed from this device.")
-            }
+        }
+    }
+
+    /// No confirmation: the card dissolves, then the unchanged delete runs and the cards below slide up.
+    private func dissolveDelete(_ certificate: Certificate) {
+        guard !deleting.contains(certificate.id) else { return }
+        Haptics.impact(.light)
+        withAnimation(DeleteMotion.dissolve) { _ = deleting.insert(certificate.id) }
+        Task {
+            try? await Task.sleep(nanoseconds: DeleteMotion.dissolveNanoseconds)
+            withAnimation(Motion.smooth) { certificates.delete(certificate.id) }
+            toasts.show("Deleted \(certificate.nickname)", kind: .success)
+            deleting.remove(certificate.id)
         }
     }
 
@@ -95,7 +95,7 @@ struct CertificatesView: View {
             }
         }
         Button(role: .destructive) {
-            pendingDelete = certificate
+            dissolveDelete(certificate)
         } label: {
             Label("Delete", systemImage: "trash")
         }

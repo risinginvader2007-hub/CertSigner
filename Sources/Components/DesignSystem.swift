@@ -436,6 +436,58 @@ extension View {
     }
 }
 
+// MARK: - Separators
+
+/// Very faint separator for rows inside cards (replaces bright system `Divider()`s).
+struct SoftDivider: View {
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(contrast == .increased ? 0.18 : 0.05))
+            .frame(height: 0.5)
+            .padding(.vertical, 1)
+            .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    /// Faint list-row separators (Settings, Library, Sources, Search lists).
+    func softRowSeparators() -> some View {
+        listRowSeparatorTint(Color.primary.opacity(0.06))
+    }
+}
+
+// MARK: - Delete dissolve
+
+enum DeleteMotion {
+    /// The dissolve itself (scale down, blur, brighten, fade).
+    static let dissolve = Animation.easeIn(duration: 0.28)
+    static let dissolveNanoseconds: UInt64 = 280_000_000
+}
+
+extension View {
+    /// Quick dissolve for an item being deleted. Fade only with Reduce Motion.
+    func dissolving(_ active: Bool) -> some View {
+        modifier(Dissolve(active: active))
+    }
+}
+
+private struct Dissolve: ViewModifier {
+    let active: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        let motion = active && !reduceMotion
+        content
+            .scaleEffect(motion ? 0.92 : 1)
+            .blur(radius: motion ? 8 : 0)
+            .brightness(motion ? 0.12 : 0)
+            .opacity(active ? 0 : 1)
+            .allowsHitTesting(!active)
+    }
+}
+
 // MARK: - Staggered entrance
 
 extension View {

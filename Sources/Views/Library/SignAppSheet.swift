@@ -172,30 +172,37 @@ struct SignAppSheet: View {
 
     private var certificateSection: some View {
         CardSection("Certificate", systemImage: "checkmark.seal") {
-            HStack(spacing: 12) {
+            // Row 1: glyph + picker (the name may wrap; the row grows to fit).
+            HStack(alignment: .center, spacing: 12) {
                 CertificateGlyph(seed: certificate?.nickname ?? "?", size: 40)
-                VStack(alignment: .leading, spacing: 4) {
-                    Picker("Certificate", selection: $certificateID) {
-                        ForEach(certificates.certificates) { cert in
-                            Text(cert.nickname).tag(Optional(cert.id))
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    if let certificate {
-                        HStack(spacing: 6) {
-                            CertificateStatusBadge(status: certificate.status())
-                            if let type = certificate.profile?.type {
-                                StatusBadge(text: type.rawValue, kind: .neutral)
-                            }
-                        }
+                Picker("Certificate", selection: $certificateID) {
+                    ForEach(certificates.certificates) { cert in
+                        Text(cert.nickname).tag(Optional(cert.id))
                     }
                 }
-                Spacer()
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            // Row 2: badges on their own line, never overlapping the name.
+            if let certificate {
+                HStack(spacing: 6) {
+                    CertificateStatusBadge(status: certificate.status())
+                    if let type = certificate.profile?.type {
+                        StatusBadge(text: type.rawValue, kind: .neutral)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            // Row 3: App ID on a subtle tonal strip instead of a divider.
             if let profile = certificate?.profile {
-                Divider()
                 InfoRow(label: "App ID", value: profile.bundleIDPattern)
+                    .padding(.horizontal, Space.x3)
+                    .padding(.vertical, Space.x2 + 2)
+                    .background(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                        .fill(Color.primary.opacity(0.045)))
             }
         }
     }
@@ -291,7 +298,7 @@ struct SignAppSheet: View {
     private var optionsSection: some View {
         CardSection("Signing Options", systemImage: "slider.horizontal.3") {
             labeledField("Display name", placeholder: app.name, text: $options.displayName)
-            Divider()
+            SoftDivider()
             Toggle(isOn: $keepOriginalBundleID) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Keep original bundle ID")
@@ -302,10 +309,10 @@ struct SignAppSheet: View {
                 labeledField("Bundle ID", placeholder: app.bundleID, text: $options.bundleID)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            Divider()
+            SoftDivider()
             labeledField("Version", placeholder: app.version, text: $options.version)
             if !app.extensions.isEmpty {
-                Divider()
+                SoftDivider()
                 Toggle(isOn: $options.removeExtensions) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Remove app extensions")
@@ -315,7 +322,7 @@ struct SignAppSheet: View {
                 }
             }
             if app.containsWatchApp {
-                Divider()
+                SoftDivider()
                 Toggle("Remove Watch app", isOn: $options.removeWatchApp)
             }
         }

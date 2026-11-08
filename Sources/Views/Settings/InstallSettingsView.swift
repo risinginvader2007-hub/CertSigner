@@ -7,6 +7,7 @@ struct InstallSettingsView: View {
 
     var body: some View {
         Form {
+            Group {
             Section {
                 Picker("Method", selection: $method) {
                     ForEach(InstallMethod.allCases) { option in
@@ -63,6 +64,8 @@ struct InstallSettingsView: View {
                     .font(.footnote)
                     .foregroundColor(.secondary)
             }
+            }
+            .softRowSeparators()
         }
         .navigationTitle("Install")
         .navigationBarTitleDisplayMode(.inline)
@@ -124,6 +127,7 @@ struct CustomServerCertificateView: View {
 
     var body: some View {
         Form {
+            Group {
             Section {
                 TextField("install.example.com", text: $hostname)
                     .textInputAutocapitalization(.never)
@@ -171,6 +175,8 @@ struct CustomServerCertificateView: View {
                 .disabled(certificatePEM == nil || keyPEM == nil || hostname.isEmpty)
                 .modifier(ShakeEffect(animatableData: CGFloat(shakes)))
             }
+            }
+            .softRowSeparators()
         }
         .navigationTitle("My Certificate")
         .navigationBarTitleDisplayMode(.inline)
