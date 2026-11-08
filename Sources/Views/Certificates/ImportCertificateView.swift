@@ -45,6 +45,7 @@ struct ImportCertificateView: View {
     @State private var errorMessage: String?
     @State private var shakes = 0
     @FocusState private var focused: Field?
+    @State private var importFeedback: PrimaryButton.Feedback?
 
     private var canImport: Bool {
         p12 != nil && profileFile != nil && !nickname.trimmingCharacters(in: .whitespaces).isEmpty
@@ -59,6 +60,8 @@ struct ImportCertificateView: View {
                             .focused($focused, equals: .nickname)
                             .submitLabel(.next)
                             .onSubmit { focused = .password }
+                            .frame(minHeight: 24)
+                            .focusGlow(focused == .nickname)
                     }
 
                     CardSection("Files", systemImage: "doc.on.doc") {
@@ -97,9 +100,15 @@ struct ImportCertificateView: View {
                             } label: {
                                 Image(systemName: revealPassword ? "eye.slash" : "eye")
                                     .foregroundColor(.secondary)
+                                    .symbolReplace()
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
                             }
                             .accessibilityLabel(revealPassword ? "Hide password" : "Show password")
                         }
+                        .padding(.trailing, -Space.x2)
+                        .frame(minHeight: 24)
+                        .focusGlow(focused == .password)
                         Text("Stored in the iOS Keychain on this device only. Leave empty if the .p12 has no password.")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -114,7 +123,8 @@ struct ImportCertificateView: View {
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
-                    PrimaryButton(title: "Import Certificate", systemImage: "square.and.arrow.down", isLoading: isImporting) {
+                    PrimaryButton(title: "Import Certificate", systemImage: "square.and.arrow.down", isLoading: isImporting,
+                                  feedback: importFeedback) {
                         Task { await runImport() }
                     }
                     .disabled(!canImport)
@@ -123,7 +133,7 @@ struct ImportCertificateView: View {
                 .padding(Theme.padding)
                 .animation(Theme.spring, value: errorMessage)
             }
-            .background(Theme.background.ignoresSafeArea())
+            .background(AuroraBackground(intensity: 0.7))
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Import Certificate")
             .navigationBarTitleDisplayMode(.inline)
@@ -255,6 +265,11 @@ struct ImportCertificateView: View {
         errorMessage = message
         toasts.show(message, kind: .error) // also plays the error haptic
         withAnimation(.linear(duration: 0.45)) { shakes += 1 }
+        importFeedback = .error
+        Task {
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            importFeedback = nil
+        }
     }
 }
 
@@ -272,9 +287,13 @@ struct FilePickRow: View {
             HStack(spacing: 12) {
                 Image(systemName: systemImage)
                     .font(.body.weight(.semibold))
-                    .foregroundColor(accent)
+                    .foregroundColor(isDone ? Theme.success : accent)
                     .frame(width: 36, height: 36)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(accent.opacity(0.12)))
+                    .background(RoundedRectangle(cornerRadius: Radius.xs + 2, style: .continuous)
+                        .fill((isDone ? Theme.success : accent).opacity(0.14)))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.xs + 2, style: .continuous)
+                        .strokeBorder((isDone ? Theme.success : accent).opacity(0.3), lineWidth: 0.75))
+                    .ambientGlow(isDone ? Theme.success : .clear, radius: 8, opacity: 0.4)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
@@ -288,8 +307,10 @@ struct FilePickRow: View {
                 Image(systemName: isDone ? "checkmark.circle.fill" : "chevron.right")
                     .foregroundColor(isDone ? Theme.success : .secondary.opacity(0.6))
                     .font(isDone ? .title3 : .footnote.weight(.semibold))
+                    .symbolBounce(value: isDone)
                     .animation(Theme.bouncy, value: isDone)
             }
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle(scale: 0.98))

@@ -6,6 +6,7 @@ struct CertificatesView: View {
     @EnvironmentObject private var importer: ImportCoordinator
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
     @State private var pendingDelete: Certificate?
+    @State private var appeared = false
 
     /// Pushed from Settings / Home, so no NavigationStack of its own.
     var body: some View {
@@ -22,10 +23,11 @@ struct CertificatesView: View {
                         )
                         .padding(.top, 60)
                     } else {
-                        ForEach(certificates.certificates) { certificate in
+                        ForEach(Array(certificates.certificates.enumerated()), id: \.element.id) { index, certificate in
                             NavigationLink(value: certificate.id) {
                                 CertificateCard(certificate: certificate, isActive: certificate.id == certificates.activeID)
                             }
+                            .staggeredEntrance(index, active: appeared)
                             .buttonStyle(PressableButtonStyle(scale: 0.98))
                             .transition(.asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity), removal: .opacity))
                             .contextMenu { menu(for: certificate) }
@@ -39,8 +41,9 @@ struct CertificatesView: View {
                 .animation(Theme.spring, value: certificates.certificates.map(\.id))
                 .animation(Theme.spring, value: certificates.activeID)
             }
-            .background(Theme.background.ignoresSafeArea())
+            .background(AuroraBackground(intensity: 0.6))
             .refreshable { await reload() }
+            .onAppear { appeared = true }
             .navigationTitle("Certificates")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -133,6 +136,7 @@ struct CertificateCard: View {
     let isActive: Bool
 
     @Environment(\.themeAccent) private var accent
+    @Environment(\.themeGradient) private var gradient
 
     private var lifetimeRemaining: Double? {
         guard let start = certificate.profile?.creationDate,
@@ -166,6 +170,9 @@ struct CertificateCard: View {
                 Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
                     .foregroundColor(isActive ? accent : .secondary.opacity(0.4))
+                    .symbolReplace()
+                    .symbolBounce(value: isActive)
+                    .ambientGlow(isActive ? accent : .clear, radius: 8, opacity: 0.5)
                     .scaleEffect(isActive ? 1 : 0.85)
                     .accessibilityHidden(true)
             }
@@ -182,12 +189,26 @@ struct CertificateCard: View {
             }
         }
         .padding(Theme.padding)
-        .cardBackground()
+        .modifier(CardSurface(cornerRadius: Theme.corner, glow: isActive ? accent : nil))
         .overlay(
             RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
-                .strokeBorder(accent, lineWidth: isActive ? 2 : 0)
+                .strokeBorder(LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing),
+                              lineWidth: isActive ? 2 : 0)
                 .opacity(isActive ? 1 : 0)
         )
+        .background(alignment: .top) {
+            // Card-stack depth: a tinted sheet peeking out behind the active card.
+            if isActive {
+                RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
+                    .fill(LinearGradient(colors: gradient.map { $0.opacity(0.35) }, startPoint: .leading, endPoint: .trailing))
+                    .padding(.horizontal, Space.x3)
+                    .offset(y: 7)
+                    .transition(.opacity)
+            }
+        }
+        .scaleEffect(isActive ? 1 : 0.985)
+        .padding(.bottom, isActive ? 6 : 0)
+        .animation(Motion.bouncy, value: isActive)
         .contentShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(certificate.nickname), \(certificate.status().title)\(isActive ? ", active" : "")")
@@ -210,6 +231,11 @@ struct CertificateGlyph: View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
                 .fill(LinearGradient(colors: Theme.palette(for: seed), startPoint: .topLeading, endPoint: .bottomTrailing))
+            // Glossy top highlight
+            RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+                .fill(LinearGradient(colors: [Color.white.opacity(0.35), .clear], startPoint: .top, endPoint: .center))
+            RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.75)
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: size * 0.46, weight: .semibold))
                 .foregroundColor(.white)

@@ -2,11 +2,14 @@ import SwiftUI
 
 struct PrimaryButton: View {
     enum Style { case filled, tinted, destructive }
+    /// Brief morph after an action: green check or red cross.
+    enum Feedback: Equatable { case success, error }
 
     let title: String
     var systemImage: String? = nil
     var style: Style = .filled
     var isLoading: Bool = false
+    var feedback: Feedback? = nil
     let action: () -> Void
 
     @Environment(\.isEnabled) private var isEnabled
@@ -16,7 +19,9 @@ struct PrimaryButton: View {
 
     /// The accent gradient, unless a screen overrode the accent (e.g. red for destructive actions).
     private var fillColors: [Color] {
-        themeGradient.first == accent ? themeGradient : [accent.opacity(0.85), accent]
+        if let feedback { return feedback == .success ? [Theme.success.opacity(0.85), Theme.success]
+                                                      : [Theme.danger.opacity(0.85), Theme.danger] }
+        return accent == Theme.danger ? [Theme.danger.opacity(0.85), Theme.danger] : themeGradient
     }
 
     var body: some View {
@@ -27,8 +32,14 @@ struct PrimaryButton: View {
             HStack(spacing: 8) {
                 if isLoading {
                     ProgressView().tint(foreground)
+                } else if let feedback {
+                    Image(systemName: feedback == .success ? "checkmark" : "xmark")
+                        .fontWeight(.bold)
+                        .symbolBounce(value: feedback)
+                        .transition(.scale.combined(with: .opacity))
                 } else if let systemImage {
                     Image(systemName: systemImage)
+                        .transition(.scale.combined(with: .opacity))
                 }
                 Text(title).fontWeight(.semibold)
             }
@@ -57,6 +68,7 @@ struct PrimaryButton: View {
         .opacity(isEnabled ? 1 : 0.45)
         .allowsHitTesting(!isLoading)
         .animation(Theme.spring, value: isLoading)
+        .animation(Motion.bouncy, value: feedback)
         .accessibilityLabel(title)
     }
 

@@ -248,6 +248,22 @@ private struct FocusGlow: ViewModifier {
     }
 }
 
+/// Plain text field with the focus glow (no autocapitalisation / autocorrect, for IDs and versions).
+struct GlowTextField: View {
+    let placeholder: String
+    @Binding var text: String
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .focused($focused)
+            .frame(minHeight: 24)
+            .focusGlow(focused)
+    }
+}
+
 // MARK: - Segmented control with a sliding glass indicator
 
 struct GlassSegmentedControl<Value: Hashable>: View {

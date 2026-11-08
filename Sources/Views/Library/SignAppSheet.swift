@@ -26,6 +26,8 @@ struct SignAppSheet: View {
     @State private var keepOriginalBundleID = false
     @State private var prefilled = false
     @State private var installAfter = false
+    /// Passed checks start collapsed; failing / unchecked ones are always open.
+    @State private var expandedChecks: Set<String> = []
     /// True once the job is queued (the staged IPA must then be kept).
     @State private var started = false
     @State private var shakes = 0
@@ -198,28 +200,66 @@ struct SignAppSheet: View {
         }
     }
 
+    /// Stepper-style checklist: status icons joined by a rail, rows expand to show their detail.
     private var checksSection: some View {
         CardSection("Pre-sign Checks", systemImage: "checklist") {
-            ForEach(checks) { check in
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: icon(for: check.state))
-                        .font(.title3)
-                        .foregroundColor(color(for: check.state))
-                        .frame(width: 24)
-                        .transition(.scale.combined(with: .opacity))
-                        .id("\(check.id)-\(check.state)")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(check.title).font(.subheadline.weight(.semibold))
-                        Text(check.detail)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+            let list = checks
+            ForEach(Array(list.enumerated()), id: \.element.id) { index, check in
+                let alwaysOpen = check.state != .pass
+                let expanded = alwaysOpen || expandedChecks.contains(check.id)
+                Button {
+                    guard !alwaysOpen else { return }
+                    Haptics.selection()
+                    withAnimation(Motion.snappy) {
+                        if expandedChecks.contains(check.id) { expandedChecks.remove(check.id) } else { expandedChecks.insert(check.id) }
                     }
-                    Spacer(minLength: 0)
+                } label: {
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(spacing: 4) {
+                            Image(systemName: icon(for: check.state))
+                                .font(.title3)
+                                .foregroundColor(color(for: check.state))
+                                .symbolBounce(value: check.state)
+                                .ambientGlow(color(for: check.state), radius: 6, opacity: 0.45)
+                                .transition(.scale.combined(with: .opacity))
+                                .id("\(check.id)-\(check.state)")
+                            if index < list.count - 1 {
+                                Capsule()
+                                    .fill(LinearGradient(colors: [color(for: check.state).opacity(0.5),
+                                                                  color(for: list[index + 1].state).opacity(0.5)],
+                                                         startPoint: .top, endPoint: .bottom))
+                                    .frame(width: 2)
+                                    .frame(minHeight: 10, maxHeight: .infinity)
+                            }
+                        }
+                        .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text(check.title).font(.subheadline.weight(.semibold)).foregroundColor(.primary)
+                                Spacer(minLength: 4)
+                                if !alwaysOpen {
+                                    Image(systemName: "chevron.down")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundColor(.secondary)
+                                        .rotationEffect(.degrees(expanded ? 180 : 0))
+                                }
+                            }
+                            if expanded {
+                                Text(check.detail)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+                        }
+                        .padding(.bottom, index < list.count - 1 ? 8 : 0)
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
                 .accessibilityValue(label(for: check.state))
-                if check.id != checks.last?.id { Divider() }
+                .accessibilityHint(alwaysOpen ? "" : (expanded ? "Hides details" : "Shows details"))
             }
         }
     }
@@ -297,13 +337,11 @@ struct SignAppSheet: View {
     }
 
     private func labeledField(_ title: String, placeholder: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.secondary)
-            TextField(placeholder, text: text)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+            GlowTextField(placeholder: placeholder, text: text)
         }
     }
 
