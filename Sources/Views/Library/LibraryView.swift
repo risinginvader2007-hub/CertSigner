@@ -129,10 +129,10 @@ struct LibraryView: View {
                     .zoomTransition(id: id, in: zoom)
             }
             .sheet(item: $installTarget) { app in
-                InstallSheet(app: app).roundedDesign()
+                InstallSheet(app: app).sheetChrome()
             }
             .sheet(item: $logTarget) { target in
-                SigningLogSheet(taskID: target.id).roundedDesign()
+                SigningLogSheet(taskID: target.id).sheetChrome()
             }
             .confirmationDialog(
                 "Delete \(pendingDelete?.name ?? "app")?",

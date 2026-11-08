@@ -398,6 +398,23 @@ struct ExpiryRing: View {
     }
 }
 
+// MARK: - Sheet chrome
+
+extension View {
+    /// Consistent sheet look: SF Rounded, visible grabber, large continuous corners (iOS 16.4+).
+    @ViewBuilder
+    func sheetChrome() -> some View {
+        if #available(iOS 16.4, *) {
+            self.roundedDesign()
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(Radius.xl)
+        } else {
+            self.roundedDesign()
+                .presentationDragIndicator(.visible)
+        }
+    }
+}
+
 // MARK: - Staggered entrance
 
 extension View {

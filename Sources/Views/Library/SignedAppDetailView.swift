@@ -94,7 +94,7 @@ struct SignedAppDetailView: View {
             .padding(Theme.padding)
         }
         .sheet(isPresented: $showInstall) {
-            InstallSheet(app: app).roundedDesign()
+            InstallSheet(app: app).sheetChrome()
         }
         .confirmationDialog("Delete \(app.name)?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {

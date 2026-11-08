@@ -106,7 +106,7 @@ struct SourcesView: View {
             }
             .sheet(isPresented: $showAdd) {
                 AddSourceSheet()
-                    .roundedDesign()
+                    .sheetChrome()
             }
             .task { await store.refreshIfStale() }
         }

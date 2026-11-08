@@ -26,16 +26,16 @@ struct RootView: View {
             .modifier(ToastHost(center: toasts))
             .sheet(isPresented: $importer.showCertificateImport) {
                 ImportCertificateView()
-                    .roundedDesign()
+                    .sheetChrome()
             }
             .sheet(item: $importer.review) { request in
                 SignAppSheet(app: request.app, autoStart: request.quickSign, discardIfUnsigned: true,
                              installWhenDone: request.installWhenDone)
-                    .roundedDesign()
+                    .sheetChrome()
             }
             .sheet(item: $queue.installRequest) { app in
                 InstallSheet(app: app)
-                    .roundedDesign()
+                    .sheetChrome()
             }
             .onOpenURL { url in handleIncoming(url) }
     }

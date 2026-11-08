@@ -62,6 +62,8 @@ struct ToastView: View {
             Image(systemName: toast.systemImage)
                 .foregroundColor(toast.color)
                 .font(.body.weight(.semibold))
+                .symbolBounce(value: toast.id)
+                .ambientGlow(toast.color, radius: 6, opacity: 0.5)
             Text(toast.message)
                 .font(.subheadline.weight(.medium))
                 .foregroundColor(.primary)
@@ -70,8 +72,12 @@ struct ToastView: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
+        .frame(minHeight: 44)
         .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 1))
+        .overlay(Capsule().strokeBorder(
+            LinearGradient(colors: [toast.color.opacity(0.55), Color.white.opacity(0.08)],
+                           startPoint: .leading, endPoint: .trailing), lineWidth: 1))
+        .shadow(color: toast.color.opacity(0.18), radius: 18, x: 0, y: 8)
         .shadow(color: .black.opacity(0.15), radius: 16, x: 0, y: 6)
         .padding(.horizontal, 24)
         .accessibilityElement(children: .combine)
@@ -81,6 +87,8 @@ struct ToastView: View {
 
 struct ToastHost: ViewModifier {
     @ObservedObject var center: ToastCenter
+    /// Upward drag in progress (swipe up to dismiss).
+    @State private var drag: CGFloat = 0
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .top) {
@@ -88,8 +96,22 @@ struct ToastHost: ViewModifier {
                 ToastView(toast: toast)
                     .id(toast.id)
                     .padding(.top, 6)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .offset(y: min(0, drag) + max(0, drag) * 0.15) // rubber-band when pulled down
+                    .opacity(1 + Double(min(0, drag)) / 120)
+                    .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .scale(scale: 0.9)).combined(with: .opacity),
+                                            removal: .move(edge: .top).combined(with: .opacity)))
                     .onTapGesture { center.dismiss() }
+                    .gesture(
+                        DragGesture(minimumDistance: 6)
+                            .onChanged { drag = $0.translation.height }
+                            .onEnded { value in
+                                if value.translation.height < -24 || value.predictedEndTranslation.height < -60 {
+                                    center.dismiss()
+                                }
+                                withAnimation(Motion.snappy) { drag = 0 }
+                            }
+                    )
+                    .accessibilityHint("Tap or swipe up to dismiss")
                     .zIndex(1)
             }
         }

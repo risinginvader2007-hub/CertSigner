@@ -29,15 +29,17 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                certificatesSection
-                signingSection
-                installSection
-                deviceSection
-                appearanceSection
-                storageSection
-                logSection
-                aboutSection
+                certificatesSection.listRowBackground(RowSurface())
+                signingSection.listRowBackground(RowSurface())
+                installSection.listRowBackground(RowSurface())
+                deviceSection.listRowBackground(RowSurface())
+                appearanceSection.listRowBackground(RowSurface())
+                storageSection.listRowBackground(RowSurface())
+                logSection.listRowBackground(RowSurface())
+                aboutSection.listRowBackground(RowSurface())
             }
+            .scrollContentBackground(.hidden)
+            .background(AuroraBackground(intensity: 0.5))
             .navigationTitle("Settings")
             .task { await refreshStorage() }
             .refreshable { await refreshStorage() }
@@ -150,13 +152,15 @@ struct SettingsView: View {
 
     private var appearanceSection: some View {
         Section("Appearance") {
-            Picker("Theme", selection: $appearance) {
-                ForEach(AppearanceOption.allCases) { option in
-                    Text(option.title).tag(option)
+            // Sliding glass segmented control (plays the selection haptic itself).
+            GlassSegmentedControl(
+                selection: $appearance,
+                options: AppearanceOption.allCases.map { option in
+                    GlassSegmentedControl<AppearanceOption>.Option(value: option, title: option.title, systemImage: option.systemImage)
                 }
-            }
-            .pickerStyle(.segmented)
-            .onChange(of: appearance) { _ in Haptics.selection() }
+            )
+            .padding(.vertical, 4)
+            .accessibilityLabel("Theme")
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Accent colour")
@@ -185,6 +189,8 @@ struct SettingsView: View {
                     }
                 }
             } else {
+                StorageBar(items: storage)
+                    .padding(.vertical, 6)
                 ForEach(storage) { item in
                     HStack {
                         Label(item.title, systemImage: item.systemImage)
@@ -357,9 +363,39 @@ struct AppIconPicker: View {
 
     @EnvironmentObject private var toasts: ToastCenter
     @Environment(\.themeAccent) private var accent
+    @Environment(\.themeGradient) private var gradient
     @State private var current: String?
 
+    private var currentOption: Option {
+        options.first { $0.iconName == current } ?? options[0]
+    }
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Live preview: the chosen icon as it sits on the Home Screen.
+            HStack(spacing: 14) {
+                Image(currentOption.preview)
+                    .resizable()
+                    .frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.white.opacity(0.2), lineWidth: 0.75))
+                    .ambientGlow(accent, radius: 14, opacity: 0.35)
+                    .id(currentOption.id)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("CertSigner").font(.subheadline.weight(.semibold))
+                    Text("\(currentOption.title) icon").font(.caption).foregroundColor(.secondary)
+                }
+            }
+            .animation(Motion.bouncy, value: current)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Current icon: \(currentOption.title)")
+            picker
+        }
+        .onAppear { current = UIApplication.shared.alternateIconName }
+    }
+
+    private var picker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 14) {
                 ForEach(options) { option in
@@ -374,7 +410,8 @@ struct AppIconPicker: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .strokeBorder(accent, lineWidth: selected ? 3 : 0)
+                                        .strokeBorder(LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing),
+                                                      lineWidth: selected ? 3 : 0)
                                         .padding(-4)
                                 )
                                 .scaleEffect(selected ? 1.04 : 1)
@@ -392,7 +429,6 @@ struct AppIconPicker: View {
             .padding(.vertical, 4)
             .animation(Theme.bouncy, value: current)
         }
-        .onAppear { current = UIApplication.shared.alternateIconName }
     }
 
     private func select(_ option: Option) {
@@ -410,6 +446,56 @@ struct AppIconPicker: View {
                     Haptics.success()
                 }
             }
+        }
+    }
+}
+
+/// Storage usage as one animated, colour-coded bar (each area's share of the total).
+struct StorageBar: View {
+    let items: [StorageItem]
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var grown = false
+
+    private static let colors: [Color] = [Theme.violet, Theme.cyan, Theme.indigo, Theme.warning, Theme.success, .pink]
+
+    private var total: Int64 { max(1, items.reduce(0) { $0 + $1.bytes }) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GeometryReader { geo in
+                HStack(spacing: 2) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        let share = CGFloat(item.bytes) / CGFloat(total)
+                        if item.bytes > 0 {
+                            Capsule()
+                                .fill(Self.colors[index % Self.colors.count])
+                                .frame(width: max(4, (geo.size.width - 12) * share * (grown ? 1 : 0)))
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(height: 10)
+            .background(Capsule().fill(Color.primary.opacity(0.07)))
+            .clipShape(Capsule())
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        if item.bytes > 0 {
+                            HStack(spacing: 4) {
+                                Circle().fill(Self.colors[index % Self.colors.count]).frame(width: 7, height: 7)
+                                Text(item.title).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Storage breakdown")
+        .onAppear {
+            withAnimation(Motion.adaptive(Motion.smooth, reduceMotion: reduceMotion).delay(0.1)) { grown = true }
         }
     }
 }
