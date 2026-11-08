@@ -1,13 +1,66 @@
-# CertSigner – how to get your IPA (no Mac needed)
+# CertSigner
 
-1. Create a free account at github.com (skip if you have one).
-2. Click **New repository**, name it `CertSigner`, set it to **Public** (free builds), click **Create**.
-3. On the new repo page click **uploading an existing file**.
-   Drag in ALL files and folders from this project (project.yml, Sources, .github, README.md).
-   Important: the hidden `.github` folder must be included. Click **Commit changes**.
-4. Open the **Actions** tab. A run called "Build IPA" starts by itself. Wait ~5 minutes for a green tick.
-   (If nothing starts: Actions -> Build IPA -> Run workflow.)
-5. Click the finished run, scroll to **Artifacts**, download **CertSigner-ipa**, unzip it.
-6. Send `CertSigner.ipa` to your iPhone and open it in FlareStore.
+An on-device iOS signing and sideloading app (FlareStore / Feather style) for **your own certificates and your own devices**.
+Built with SwiftUI (iOS 16+), compiled by GitHub Actions — no Mac needed.
 
-If the run shows a red X, open it, copy the error text and paste it to Claude.
+## Get the IPA
+
+1. Push to `main` (or open **Actions → Build IPA → Run workflow**).
+2. Wait for the green tick (about 2–5 minutes).
+3. Open the run, scroll to **Artifacts**, download **CertSigner-ipa**, unzip it.
+4. Send `CertSigner.ipa` to your iPhone and install it with FlareStore (or any signer).
+
+From the command line: `gh run list` → `gh run download <id> -n CertSigner-ipa`.
+
+## Architecture
+
+```
+Sources/
+  App/         CertSignerApp (entry, environment objects), RootView (TabView), TabRouter
+  Models/      Certificate, ProvisioningProfile (+ ProfileParser), LibraryApp, SigningStep
+  Services/    CertificateStore, LibraryStore, Keychain, P12Inspector, DERCertificateParser,
+               CacheService, Haptics   (plain Swift, no UI; unit-testable)
+  Views/       Library, Sources, Certificates, Signed, Settings
+  Components/  Theme, PrimaryButton, Card, StatusBadge, ProgressRing/ProgressBar,
+               EmptyStateView, AppIconView, ToastView, Effects (shimmer, shake, checkmark)
+  Extensions/  Formatting helpers
+```
+
+- **MVVM**: `@MainActor ObservableObject` stores injected as environment objects; views stay thin.
+- **Storage**: certificates in `Documents/Certificates/<uuid>/` (`certificate.p12`, `embedded.mobileprovision`) plus `index.json`; p12 passwords in the Keychain (`p12-<uuid>`).
+- **Signing (Stage 4)**: zsign vendored as a C++ target with an Objective-C++ wrapper, driven by a `SigningService` that reports `SigningStep` progress and log lines to `SigningProgressView`.
+- **Install (Stage 5)**: local HTTPS server + `itms-services://` manifest.
+
+## Roadmap
+
+| Stage | Contents | Status |
+|---|---|---|
+| 1 | Skeleton + CI unsigned IPA | ✅ |
+| 2 | Design system, tab bar, certificates manager, library UI (sample data) | ✅ |
+| 3 | IPA import (Files, share sheet, URL), icon/metadata extraction, persistence | |
+| 4 | zsign integration, signing pipeline with progress | |
+| 5 | Local HTTPS server and install flow | |
+| 6 | Signed apps list, re-sign, sources/repos | |
+| 7 | Tweaks (dylib/.deb injection), settings polish, log export, app icons | |
+
+## Features so far
+
+### Certificates
+- **Import**: Certificates tab → **+**. Pick your `.p12`, your `.mobileprovision`, enter a nickname (auto-filled from the profile) and the password.
+  The password is checked against the `.p12` immediately; a wrong password shakes the button and shows an error.
+- Each certificate shows its team, profile type (Development / Ad Hoc / Enterprise / App Store), a status badge (valid, expiring within 7 days, expired) and a lifetime bar.
+- Tap a certificate for full details: profile info, signing certificate name and expiry, whether the `.p12` matches the profile, devices and entitlements.
+- **Active certificate**: long-press → *Set as Active*, or the button on the detail screen.
+- **UDID check**: sideloaded apps cannot read the device UDID (Apple restricts it). Paste your UDID in **Settings → This Device**; each certificate then shows whether this iPhone is in its profile.
+- Certificates imported in Stage 1 are migrated automatically.
+
+### Library (sample data in Stage 2)
+- Grid / list toggle and sort (date, name, size) from the top-left menu; search by name or bundle ID; pull to refresh; long-press to copy the bundle ID or delete.
+- Tap an app for its detail page (zoom transition on iOS 18+). **Sign App** opens a *demo* of the signing progress screen (no real signing yet).
+
+### Settings
+- Theme (System / Light / Dark), accent colour, device UDID, clear cache, version info.
+
+## Limits of a sideloaded app
+- No UDID access (manual entry instead).
+- No private APIs or special entitlements; everything uses public frameworks.
