@@ -6,13 +6,37 @@ packages:
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation
     from: 0.9.19
+  OpenSSL:
+    url: https://github.com/krzyzanowskim/OpenSSL
+    from: 3.3.0
 targets:
+  # Vendored zsign (C++) + Objective-C++ wrapper, built as a static library.
+  ZSign:
+    type: library.static
+    platform: iOS
+    sources:
+      - path: Vendor/zsign
+        excludes: [LICENSE]
+      - path: Vendor/ZSignBridge
+    dependencies:
+      - package: OpenSSL
+    settings:
+      base:
+        CLANG_CXX_LANGUAGE_STANDARD: gnu++17
+        CLANG_CXX_LIBRARY: libc++
+        CLANG_ENABLE_OBJC_ARC: YES
+        GCC_PREPROCESSOR_DEFINITIONS: ["$(inherited)", "ZSIGN_IOS=1"]
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/Vendor/zsign", "$(SRCROOT)/Vendor/zsign/common", "$(SRCROOT)/Vendor/ZSignBridge"]
+        GCC_WARN_INHIBIT_ALL_WARNINGS: YES
+        SKIP_INSTALL: YES
   CertSigner:
     type: application
     platform: iOS
     sources: [Sources]
     dependencies:
       - package: ZIPFoundation
+      - package: OpenSSL
+      - target: ZSign
     # XcodeGen writes this plist at generate time; Xcode merges the INFOPLIST_KEY_* settings into it.
     info:
       path: Support/Info.plist
@@ -58,3 +82,6 @@ targets:
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "5.0"
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Bridging/CertSigner-Bridging-Header.h
+        HEADER_SEARCH_PATHS: ["$(inherited)", "$(SRCROOT)/Vendor/ZSignBridge"]
+        OTHER_LDFLAGS: ["$(inherited)", "-lc++"]
