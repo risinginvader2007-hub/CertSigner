@@ -305,6 +305,39 @@ struct GlassSegmentedControl<Value: Hashable>: View {
     }
 }
 
+// MARK: - Scroll-driven tilt (hero cards)
+
+extension View {
+    /// Subtle 3D tilt + parallax as the view scrolls (iOS 17+, GPU-only via `visualEffect`; none with Reduce Motion).
+    func scrollTilt(maxDegrees: Double = 5) -> some View {
+        modifier(ScrollTilt(maxDegrees: maxDegrees))
+    }
+}
+
+private struct ScrollTilt: ViewModifier {
+    let maxDegrees: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, *) {
+            if reduceMotion {
+                content
+            } else {
+                let screen = max(UIScreen.main.bounds.height, 1)
+                content.visualEffect { effect, proxy in
+                    let frame = proxy.frame(in: .global)
+                    let t = max(-1, min(1, (frame.midY - screen * 0.55) / (screen * 0.5)))
+                    return effect
+                        .rotation3DEffect(.degrees(-t * maxDegrees), axis: (x: 1, y: 0, z: 0), perspective: 0.6)
+                        .offset(x: 0, y: t * -6)
+                }
+            }
+        } else {
+            content
+        }
+    }
+}
+
 // MARK: - Staggered entrance
 
 extension View {

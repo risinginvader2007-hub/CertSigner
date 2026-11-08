@@ -38,6 +38,7 @@ struct FloatingTabBar: View {
     var badges: [AppTab: Int] = [:]
 
     @Environment(\.themeAccent) private var accent
+    @Environment(\.themeGradient) private var gradient
     @Namespace private var namespace
 
     var body: some View {
@@ -58,12 +59,13 @@ struct FloatingTabBar: View {
         return Button {
             guard tab != selection else { return }
             Haptics.selection()
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) { selection = tab }
+            withAnimation(Motion.snappy) { selection = tab }
         } label: {
             VStack(spacing: 3) {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: tab.systemImage)
                         .font(.system(size: 19, weight: .semibold))
+                        .symbolBounce(value: selected)
                         .scaleEffect(selected ? 1.08 : 1)
                         .frame(width: 30, height: 24)
                     if badge > 0 {
@@ -81,13 +83,18 @@ struct FloatingTabBar: View {
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
             }
             .foregroundColor(selected ? accent : .secondary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.vertical, 3)
             .background {
                 if selected {
+                    // Morphing selection pill: gradient-tinted glass with a lit edge and soft glow.
                     Capsule()
-                        .fill(accent.opacity(0.16))
-                        .overlay(Capsule().strokeBorder(Color.white.opacity(0.15), lineWidth: 1))
+                        .fill(LinearGradient(colors: gradient.map { $0.opacity(0.22) },
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .overlay(Capsule().strokeBorder(
+                            LinearGradient(colors: [Color.white.opacity(0.35), accent.opacity(0.25)],
+                                           startPoint: .top, endPoint: .bottom), lineWidth: 1))
+                        .shadow(color: accent.opacity(0.3), radius: 10, y: 2)
                         .matchedGeometryEffect(id: "selection", in: namespace)
                 }
             }

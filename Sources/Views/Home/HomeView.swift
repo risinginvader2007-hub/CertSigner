@@ -14,6 +14,10 @@ struct HomeView: View {
     @State private var quickSignPick = false
     @State private var dropTargeted = false
     @State private var appeared = false
+    @State private var dashPhase: CGFloat = 0
+    @State private var attentionGlow = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.themeGradient) private var gradient
 
     private var attentionApps: Int { signedApps.attentionCount }
     private var certificateNeedsAttention: Bool { certificates.active?.needsAttention ?? false }
@@ -21,8 +25,9 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 18) {
+                VStack(spacing: Space.x4 + 2) {
                     stats
+                        .staggeredEntrance(0, active: appeared)
                     if attentionApps > 0 || certificateNeedsAttention {
                         attentionBanner
                             .transition(.move(edge: .top).combined(with: .opacity))
@@ -32,12 +37,14 @@ struct HomeView: View {
                             .transition(.scale(scale: 0.95).combined(with: .opacity))
                     }
                     dropZone
+                        .staggeredEntrance(1, active: appeared)
                     quickSignRow
+                        .staggeredEntrance(2, active: appeared)
                     certificateCard
+                        .scrollTilt()
+                        .staggeredEntrance(3, active: appeared)
                 }
                 .padding(Theme.padding)
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 14)
                 .animation(Theme.spring, value: library.transfer)
                 .animation(Theme.spring, value: attentionApps)
             }
@@ -57,7 +64,11 @@ struct HomeView: View {
             }
         }
         .onAppear {
-            withAnimation(Theme.spring.delay(0.05)) { appeared = true }
+            appeared = true
+            guard !reduceMotion else { return }
+            // Marching dashed border and breathing attention glow: slow, cheap (stroke phase / opacity).
+            withAnimation(.linear(duration: 1.6).repeatForever(autoreverses: false)) { dashPhase = -32 }
+            withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) { attentionGlow = true }
         }
     }
 
@@ -95,8 +106,11 @@ struct HomeView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.title2)
                     .foregroundColor(.white)
+                    .symbolPulse()
                     .frame(width: 44, height: 44)
-                    .background(Circle().fill(Theme.warning))
+                    .background(Circle().fill(LinearGradient(colors: [Theme.warning, Theme.danger.opacity(0.85)],
+                                                             startPoint: .topLeading, endPoint: .bottomTrailing)))
+                    .shadow(color: Theme.warning.opacity(attentionGlow ? 0.6 : 0.2), radius: attentionGlow ? 12 : 4)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Needs attention")
                         .font(.headline)
@@ -118,8 +132,9 @@ struct HomeView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
-                    .strokeBorder(Theme.warning.opacity(0.35), lineWidth: 1)
+                    .strokeBorder(Theme.warning.opacity(attentionGlow ? 0.7 : 0.3), lineWidth: 1)
             )
+            .shadow(color: Theme.warning.opacity(attentionGlow ? 0.25 : 0.05), radius: 16, y: 6)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.98))
         .accessibilityHint("Opens Library showing these items")
@@ -159,13 +174,21 @@ struct HomeView: View {
             VStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill(accent.opacity(dropTargeted ? 0.3 : 0.15))
+                        .fill(RadialGradient(colors: [accent.opacity(dropTargeted ? 0.45 : 0.25), .clear],
+                                             center: .center, startRadius: 4, endRadius: 64))
+                        .frame(width: 120, height: 120)
+                    Circle()
+                        .fill(LinearGradient(colors: gradient.map { $0.opacity(dropTargeted ? 0.35 : 0.18) },
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.2), lineWidth: 1))
                         .frame(width: 76, height: 76)
                     Image(systemName: "square.and.arrow.down.on.square.fill")
                         .font(.system(size: 32, weight: .semibold))
-                        .foregroundColor(accent)
+                        .accentGradientForeground(gradient)
+                        .symbolBounce(value: dropTargeted)
                         .scaleEffect(dropTargeted ? 1.12 : 1)
                 }
+                .frame(height: 96)
                 Text("Import IPA")
                     .font(.title3.weight(.bold))
                     .foregroundColor(.primary)
@@ -184,9 +207,13 @@ struct HomeView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.corner + 4, style: .continuous)
-                    .strokeBorder(accent.opacity(dropTargeted ? 0.9 : 0.45),
-                                  style: StrokeStyle(lineWidth: 2, dash: [9, 7]))
+                    .strokeBorder(
+                        LinearGradient(colors: gradient.map { $0.opacity(dropTargeted ? 1 : 0.6) },
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: StrokeStyle(lineWidth: dropTargeted ? 2.5 : 2, lineCap: .round, dash: [9, 7], dashPhase: dashPhase)
+                    )
             )
+            .shadow(color: accent.opacity(dropTargeted ? 0.45 : 0), radius: 22)
             .animation(Theme.bouncy, value: dropTargeted)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.98))
@@ -211,9 +238,10 @@ struct HomeView: View {
                     .foregroundColor(.white)
                     .frame(width: 44, height: 44)
                     .background(
-                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        RoundedRectangle(cornerRadius: Radius.sm + 1, style: .continuous)
                             .fill(LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
                     )
+                    .ambientGlow(.pink, radius: 10, opacity: 0.4)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Quick Sign")
                         .font(.headline)
@@ -358,16 +386,29 @@ struct StatCard: View {
     let systemImage: String
     let tint: Color
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Shown value: counts up once from 0 when the card first appears, then follows `value`.
+    @State private var shown: String?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: systemImage)
                 .font(.body.weight(.semibold))
                 .foregroundColor(tint)
+                .symbolBounce(value: value)
                 .frame(width: 34, height: 34)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(tint.opacity(0.15)))
-            Text(value)
+                .background(
+                    RoundedRectangle(cornerRadius: Radius.xs + 2, style: .continuous)
+                        .fill(LinearGradient(colors: [tint.opacity(0.28), tint.opacity(0.10)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                )
+                .overlay(RoundedRectangle(cornerRadius: Radius.xs + 2, style: .continuous)
+                    .strokeBorder(tint.opacity(0.3), lineWidth: 0.75))
+                .ambientGlow(tint, radius: 8, opacity: 0.35)
+            Text(shown ?? value)
                 .font(.system(.title, design: .rounded).weight(.bold))
                 .monospacedDigit()
+                .displayTracking()
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .numericTransition()
@@ -380,6 +421,15 @@ struct StatCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardBackground()
+        .onAppear {
+            guard shown == nil else { return }
+            guard !reduceMotion, Int(value) != nil else { shown = value; return }
+            shown = "0"
+            withAnimation(.easeOut(duration: 0.7).delay(0.15)) { shown = value }
+        }
+        .onChange(of: value) { newValue in
+            withAnimation(Motion.smooth) { shown = newValue }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label): \(value)")
     }
