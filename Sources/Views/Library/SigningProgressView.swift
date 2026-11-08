@@ -21,6 +21,8 @@ struct SigningProgressView: View {
                 } else {
                     ProgressRing(progress: progress, lineWidth: 12)
                         .frame(width: 132, height: 132)
+                        .background(Circle().fill(RadialGradient(colors: [accent.opacity(0.22), .clear], center: .center,
+                                                                 startRadius: 20, endRadius: 100)).frame(width: 200, height: 200))
                         .transition(.scale.combined(with: .opacity))
                 }
             }
@@ -125,6 +127,7 @@ struct SigningProgressView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.title3)
                 .foregroundColor(Theme.success)
+                .symbolBounce(value: currentStep)
                 .transition(.scale.combined(with: .opacity))
         case .failed:
             Image(systemName: "xmark.circle.fill")
@@ -134,6 +137,8 @@ struct SigningProgressView: View {
             Image(systemName: step.systemImage)
                 .font(.body.weight(.semibold))
                 .foregroundColor(accent)
+                .symbolPulse()
+                .ambientGlow(accent, radius: 6, opacity: 0.5)
         case .pending:
             Image(systemName: step.systemImage)
                 .font(.body)

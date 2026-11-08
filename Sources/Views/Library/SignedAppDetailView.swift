@@ -34,7 +34,9 @@ struct SignedAppDetailView: View {
             VStack(spacing: 20) {
                 VStack(spacing: 12) {
                     AppIconView(image: signedApps.icons[app.id], name: app.name, size: 108)
+                        .ambientGlow(.black, radius: 20, opacity: 0.25)
                         .scaleEffect(appeared ? 1 : 0.85)
+                    
                     Text(app.name)
                         .font(.title2.weight(.bold))
                         .multilineTextAlignment(.center)

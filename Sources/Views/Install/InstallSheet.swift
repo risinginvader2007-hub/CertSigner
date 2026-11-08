@@ -8,6 +8,7 @@ struct InstallSheet: View {
     @EnvironmentObject private var router: TabRouter
     @Environment(\.dismiss) private var dismiss
     @Environment(\.themeAccent) private var accent
+    @Environment(\.themeGradient) private var gradient
     @AppStorage(SettingsKeys.installMethod) private var method: InstallMethod = .automatic
 
     /// One app-wide session: if this sheet is created twice (e.g. re-presented right after automatic
@@ -61,7 +62,7 @@ struct InstallSheet: View {
                 .animation(Theme.spring, value: currentStage)
                 .animation(Theme.spring, value: failure)
             }
-            .background(Theme.background.ignoresSafeArea())
+            .background(AuroraBackground(intensity: 0.7))
             .navigationTitle("Install")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -134,10 +135,19 @@ struct InstallSheet: View {
                     .transition(.opacity)
             default:
                 ZStack {
-                    Circle().fill(accent.opacity(0.12))
+                    Circle().fill(RadialGradient(colors: [accent.opacity(0.3), .clear], center: .center,
+                                                 startRadius: 20, endRadius: 95))
+                        .frame(width: 190, height: 190)
+                    Circle()
+                        .fill(LinearGradient(colors: gradient.map { $0.opacity(0.2) },
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
+                        .frame(width: 120, height: 120)
                     Image(systemName: currentStage == .prompt ? "hand.tap.fill" : "server.rack")
                         .font(.system(size: 44, weight: .semibold))
-                        .foregroundColor(accent)
+                        .accentGradientForeground(gradient)
+                        .symbolReplace()
+                        .symbolPulse()
                 }
                 .frame(width: 120, height: 120)
                 .transition(.opacity)

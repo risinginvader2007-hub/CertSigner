@@ -85,6 +85,8 @@ struct SourcesView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AuroraBackground(intensity: 0.55))
             .refreshable { await store.refreshAll() }
             .navigationTitle("Sources")
             .toolbar {
@@ -276,6 +278,8 @@ struct RepositoryView: View {
                         }
                     }
                 }
+                .scrollContentBackground(.hidden)
+                .background(AuroraBackground(intensity: 0.45))
                 .refreshable { await store.refresh(repoID) }
                 .searchable(text: $query, prompt: "Search \(repo.name)")
                 .navigationTitle(repo.name)
@@ -355,6 +359,8 @@ struct AllSourceAppsView: View {
                 SourceAppLink(repo: entry.repo, app: entry.app, showsSource: true)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(AuroraBackground(intensity: 0.45))
         .refreshable { await store.refreshAll() }
         .searchable(text: $query, prompt: "Search all sources")
         .navigationTitle("All Apps")
@@ -450,10 +456,14 @@ struct GetButton: View {
                                       library: library, toasts: toasts, certificates: certificates)
                 } label: {
                     Text("GET")
-                        .font(.subheadline.weight(.bold))
+                        .font(.subheadline.weight(.heavy))
+                        .tracking(0.5)
                         .foregroundColor(accent)
-                        .frame(width: 72, height: 30)
+                        .frame(width: 72, height: 32)
                         .background(Capsule().fill(accent.opacity(0.15)))
+                        .overlay(Capsule().strokeBorder(accent.opacity(0.3), lineWidth: 0.75))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Get \(app.name)")
             }

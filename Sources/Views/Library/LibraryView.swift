@@ -117,7 +117,7 @@ struct LibraryView: View {
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
-            .background(Theme.background.ignoresSafeArea())
+            .background(AuroraBackground(intensity: 0.55))
             .animation(Theme.spring, value: queue.tasks.map(\.id))
             .animation(Theme.spring, value: apps.map(\.id))
             .librarySearchable(text: $search)
@@ -166,6 +166,7 @@ struct LibraryView: View {
         Section {
             ForEach(queue.tasks) { task in
                 SigningTaskRow(task: task, job: queue.jobs[task.id], icon: icon(for: task))
+                    .listRowBackground(RowSurface())
                     .contentShape(Rectangle())
                     .onTapGesture {
                         if queue.jobs[task.id] != nil { logTarget = LogTarget(id: task.id) }
@@ -235,6 +236,7 @@ struct LibraryView: View {
                         onResign: { resign(app) }
                     )
                     .zoomSource(id: app.id, in: zoom)
+                    .listRowBackground(RowSurface())
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
                             pendingDelete = app
@@ -366,6 +368,7 @@ private struct SigningRowContent: View {
 
     @EnvironmentObject private var queue: SigningQueue
     @Environment(\.themeAccent) private var accent
+    @Environment(\.themeGradient) private var gradient
 
     private var statusText: String {
         if failed { return task.errorMessage ?? "Failed" }
@@ -394,6 +397,8 @@ private struct SigningRowContent: View {
                     Image(systemName: "exclamationmark.octagon.fill")
                         .font(.title2)
                         .foregroundColor(Theme.danger)
+                        .symbolBounce(value: failed)
+                        .ambientGlow(Theme.danger, radius: 8, opacity: 0.4)
                         .transition(.scale)
                 } else if task.status == .running {
                     ProgressRing(progress: progress, lineWidth: 5, showsPercentage: false)
@@ -407,14 +412,24 @@ private struct SigningRowContent: View {
                     Image(systemName: "clock")
                         .font(.title3)
                         .foregroundColor(.secondary)
+                        .symbolPulse()
                 }
             }
             if task.status == .running {
                 HStack(spacing: 6) {
                     ForEach(SigningStep.allCases) { candidate in
-                        Capsule()
-                            .fill(stepColor(candidate))
-                            .frame(height: 4)
+                        if candidate == step {
+                            // Current step: gradient with a moving sheen.
+                            Capsule()
+                                .fill(LinearGradient(colors: gradient, startPoint: .leading, endPoint: .trailing))
+                                .frame(height: 5)
+                                .shimmering()
+                                .shadow(color: accent.opacity(0.45), radius: 4)
+                        } else {
+                            Capsule()
+                                .fill(stepColor(candidate))
+                                .frame(height: 5)
+                        }
                     }
                 }
                 .animation(Theme.spring, value: step)
@@ -470,6 +485,26 @@ struct SignedAppListRow: View {
     let onResign: () -> Void
 
     @Environment(\.themeAccent) private var accent
+    @Environment(\.themeGradient) private var gradient
+
+    private var lifetimeRemaining: Double? {
+        guard let expires = app.expiresAt, expires > app.signedAt else { return nil }
+        let total = expires.timeIntervalSince(app.signedAt)
+        return max(0, min(1, expires.timeIntervalSinceNow / total))
+    }
+
+    private var daysLeft: Int? {
+        app.expiresAt.map { max(0, Int(ceil($0.timeIntervalSinceNow / 86_400))) }
+    }
+
+    private var ringColor: Color {
+        switch app.status() {
+        case .valid: return Theme.success
+        case .expiringSoon: return Theme.warning
+        case .expired: return Theme.danger
+        case .unknown: return .secondary
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -494,6 +529,7 @@ struct SignedAppListRow: View {
                     }
                 }
                 Spacer(minLength: 4)
+                ExpiryRing(remaining: lifetimeRemaining, days: daysLeft, color: ringColor)
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundColor(.secondary.opacity(0.6))
@@ -527,9 +563,14 @@ struct SignedAppListRow: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 9)
             .foregroundColor(filled ? .white : accent)
+            .frame(minHeight: 36)
             .background(
-                Capsule().fill(filled ? AnyShapeStyle(accent) : AnyShapeStyle(accent.opacity(0.14)))
+                Capsule().fill(filled
+                    ? AnyShapeStyle(LinearGradient(colors: gradient, startPoint: .leading, endPoint: .trailing))
+                    : AnyShapeStyle(accent.opacity(0.14)))
             )
+            .overlay(Capsule().strokeBorder(Color.white.opacity(filled ? 0.3 : 0.08), lineWidth: 0.75))
+            .ambientGlow(filled ? accent : .clear, radius: 8, opacity: 0.35)
     }
 }
 
@@ -557,7 +598,7 @@ struct SigningLogSheet: View {
                 }
                 .padding(Theme.padding)
             }
-            .background(Theme.background.ignoresSafeArea())
+            .background(AuroraBackground(intensity: 0.7))
             .navigationTitle(queue.tasks.first(where: { $0.id == taskID })?.name ?? "Signing")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

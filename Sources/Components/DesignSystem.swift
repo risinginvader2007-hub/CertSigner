@@ -338,6 +338,50 @@ private struct ScrollTilt: ViewModifier {
     }
 }
 
+// MARK: - List rows and rings
+
+/// Background for List rows sitting on the aurora: depth surface with a faint top highlight.
+struct RowSurface: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        ZStack {
+            Theme.surface
+            LinearGradient(colors: [Color.white.opacity(scheme == .dark ? 0.04 : 0.35), .clear],
+                           startPoint: .top, endPoint: .center)
+        }
+    }
+}
+
+/// Small ring showing how much signing lifetime is left, with days in the middle.
+struct ExpiryRing: View {
+    /// 0…1 lifetime remaining, nil when unknown.
+    let remaining: Double?
+    let days: Int?
+    let color: Color
+    var size: CGFloat = 34
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(color.opacity(0.16), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: CGFloat(max(0.02, min(1, remaining ?? 0))))
+                .stroke(AngularGradient(colors: [color.opacity(0.6), color], center: .center),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .shadow(color: color.opacity(0.4), radius: 3)
+            Text(days.map { $0 > 99 ? "99+" : "\($0)" } ?? "–")
+                .font(.system(size: size * 0.3, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .minimumScaleFactor(0.6)
+                .foregroundColor(color)
+        }
+        .frame(width: size, height: size)
+        .accessibilityElement()
+        .accessibilityLabel(days.map { "\($0) days left" } ?? "Expiry unknown")
+    }
+}
+
 // MARK: - Staggered entrance
 
 extension View {
