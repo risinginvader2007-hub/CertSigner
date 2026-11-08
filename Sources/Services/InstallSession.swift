@@ -52,6 +52,7 @@ final class InstallSession: ObservableObject {
     private var manifestPath = ""
     private var payloadPath = ""
     private var lastProgress = 0.0
+    private var lifecycleObservers: [NSObjectProtocol] = []
 
     static let promptTimeout: UInt64 = 180 // seconds
 
@@ -61,6 +62,8 @@ final class InstallSession: ObservableObject {
         lastProgress = 0
         phase = .preparing
         beginBackgroundTask()
+        observeLifecycle()
+        AppLog.info("install: start \(app.name) \(app.bundleID) v\(app.version) (\(ipaURL.lastPathComponent)), method \(method.rawValue)")
 
         do {
             guard FileManager.default.fileExists(atPath: ipaURL.path) else { throw InstallError.missingFile }
@@ -141,6 +144,8 @@ final class InstallSession: ObservableObject {
     }
 
     func stop() {
+        lifecycleObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        lifecycleObservers = []
         watchdog?.cancel()
         watchdog = nil
         shutdownTask?.cancel()
@@ -183,6 +188,8 @@ final class InstallSession: ObservableObject {
             }
         case .payloadFailed(let reason):
             fail("Sending the app failed: \(reason)")
+        case .requestDetail(let text):
+            AppLog.info("install: request \(text)")
         }
     }
 
@@ -209,6 +216,27 @@ final class InstallSession: ObservableObject {
 
     private func note(_ text: String, error: Bool = false) {
         log.append(LogLine(text: text, isError: error))
+        if error { AppLog.error("install: \(text)") } else { AppLog.info("install: \(text)") }
+    }
+
+    /// Records when CertSigner leaves / returns to the foreground mid-install (a suspended app can't serve the IPA).
+    private func observeLifecycle() {
+        lifecycleObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        let center = NotificationCenter.default
+        let events: [(Notification.Name, String)] = [
+            (UIApplication.willResignActiveNotification, "CertSigner inactive (system prompt shown?)"),
+            (UIApplication.didBecomeActiveNotification, "CertSigner active again"),
+            (UIApplication.didEnterBackgroundNotification, "CertSigner went to the background"),
+            (UIApplication.willEnterForegroundNotification, "CertSigner back in the foreground")
+        ]
+        lifecycleObservers = events.map { name, text in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, self.phase.isActive else { return }
+                    self.note("\(text) · phase \(self.phase)")
+                }
+            }
+        }
     }
 
     // MARK: Background time (keeps the server alive if the app is briefly backgrounded)

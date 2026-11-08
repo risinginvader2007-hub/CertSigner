@@ -11,6 +11,8 @@ final class LocalHTTPServer: @unchecked Sendable {
 
     enum Event {
         case request(method: String, path: String)
+        /// Diagnostics: who asked for what (user agent, range).
+        case requestDetail(String)
         case payloadProgress(Double)
         case payloadCompleted
         case payloadFailed(String)
@@ -163,6 +165,8 @@ final class LocalHTTPServer: @unchecked Sendable {
             headers[name] = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
         }
 
+        let agent = headers["user-agent"] ?? "-"
+        onEvent(.requestDetail("\(method) \(path) range=\(headers["range"] ?? "-") agent=\(agent)"))
         onEvent(.request(method: method, path: path))
 
         guard method == "GET" || method == "HEAD" else {
