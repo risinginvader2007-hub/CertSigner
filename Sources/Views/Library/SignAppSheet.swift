@@ -17,6 +17,7 @@ struct SignAppSheet: View {
     @State private var options = SigningOptions()
     @State private var started = false
     @State private var shakes = 0
+    @State private var installTarget: SignedApp?
 
     private var certificate: Certificate? {
         certificates.certificates.first { $0.id == certificateID }
@@ -79,6 +80,9 @@ struct SignAppSheet: View {
             .modifier(ToastHost(center: toasts))
         }
         .interactiveDismissDisabled(job.isRunning)
+        .sheet(item: $installTarget) { app in
+            InstallSheet(app: app)
+        }
         .onAppear(perform: prefill)
         .onChange(of: certificateID) { _ in
             options.bundleID = SigningValidator.suggestedBundleID(appBundleID: app.bundleID, profile: certificate?.profile)
@@ -185,13 +189,16 @@ struct SignAppSheet: View {
     private var resultActions: some View {
         VStack(spacing: 12) {
             if job.result == .success, let signed = job.signedApp {
+                PrimaryButton(title: "Install Now", systemImage: "arrow.down.app") {
+                    installTarget = signed
+                }
                 ShareLink(item: signedApps.ipaURL(for: signed)) {
                     Label("Share Signed IPA", systemImage: "square.and.arrow.up")
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
                 .buttonBorderShape(.roundedRectangle(radius: 16))
                 PrimaryButton(title: "View in Signed", systemImage: "signature", style: .tinted) {
                     router.tab = .signed

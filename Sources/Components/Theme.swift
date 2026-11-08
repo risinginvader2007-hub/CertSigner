@@ -38,6 +38,7 @@ enum SettingsKeys {
     static let deviceUDID = "settings.deviceUDID"
     static let libraryLayout = "library.layout"
     static let librarySort = "library.sort"
+    static let installMethod = "install.method"
 }
 
 enum AppearanceOption: String, CaseIterable, Identifiable {

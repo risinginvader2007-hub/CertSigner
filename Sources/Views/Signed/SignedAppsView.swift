@@ -5,6 +5,7 @@ struct SignedAppsView: View {
     @EnvironmentObject private var toasts: ToastCenter
     @EnvironmentObject private var router: TabRouter
     @State private var pendingDelete: SignedApp?
+    @State private var installTarget: SignedApp?
 
     var body: some View {
         NavigationStack {
@@ -19,9 +20,16 @@ struct SignedAppsView: View {
                         .padding(.top, 60)
                     } else {
                         ForEach(signedApps.apps) { app in
-                            SignedAppRow(app: app, icon: signedApps.icons[app.id], fileURL: signedApps.ipaURL(for: app))
+                            SignedAppRow(app: app, icon: signedApps.icons[app.id], fileURL: signedApps.ipaURL(for: app)) {
+                                installTarget = app
+                            }
                                 .transition(.asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity), removal: .opacity))
                                 .contextMenu {
+                                    Button {
+                                        installTarget = app
+                                    } label: {
+                                        Label("Install", systemImage: "arrow.down.app")
+                                    }
                                     ShareLink(item: signedApps.ipaURL(for: app)) {
                                         Label("Share IPA", systemImage: "square.and.arrow.up")
                                     }
@@ -46,6 +54,9 @@ struct SignedAppsView: View {
             .background(Theme.background.ignoresSafeArea())
             .refreshable { await reload() }
             .navigationTitle("Signed")
+            .sheet(item: $installTarget) { app in
+                InstallSheet(app: app)
+            }
             .confirmationDialog(
                 "Delete \(pendingDelete?.name ?? "app")?",
                 isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
@@ -74,6 +85,7 @@ struct SignedAppRow: View {
     let app: SignedApp
     let icon: UIImage?
     let fileURL: URL
+    var onInstall: () -> Void = {}
 
     private var status: CertificateStatus { CertificateStatus.evaluate(expiration: app.expiresAt) }
 
@@ -121,6 +133,8 @@ struct SignedAppRow: View {
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
+
+            PrimaryButton(title: "Install", systemImage: "arrow.down.app", style: .tinted, action: onInstall)
         }
         .padding(Theme.padding)
         .cardBackground()

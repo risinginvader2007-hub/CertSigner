@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
     @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .blue
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
+    @AppStorage(SettingsKeys.installMethod) private var installMethod: InstallMethod = .automatic
     @State private var cacheSize: Int64 = 0
 
     private var appVersion: String {
@@ -56,6 +57,19 @@ struct SettingsView: View {
                             Label("Manage Certificates", systemImage: "checkmark.seal")
                             Spacer()
                             Text(certificates.active?.nickname ?? "None")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
+                Section("Install") {
+                    NavigationLink {
+                        InstallSettingsView()
+                    } label: {
+                        HStack {
+                            Label("Install Method & Server", systemImage: "arrow.down.app")
+                            Spacer()
+                            Text(installMethod.title)
                                 .foregroundColor(.secondary)
                         }
                     }
