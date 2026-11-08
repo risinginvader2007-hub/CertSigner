@@ -13,6 +13,7 @@ struct RootView: View {
     @EnvironmentObject private var importer: ImportCoordinator
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var signedApps: SignedAppsStore
+    @EnvironmentObject private var queue: SigningQueue
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
     @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .blue
 
@@ -45,6 +46,10 @@ struct RootView: View {
             SignAppSheet(app: request.app, autoStart: request.quickSign, discardIfUnsigned: true)
                 .roundedDesign()
         }
+        .sheet(item: $queue.installRequest) { app in
+            InstallSheet(app: app)
+                .roundedDesign()
+        }
         .onOpenURL { url in handleIncoming(url) }
     }
 
@@ -52,7 +57,7 @@ struct RootView: View {
     private func screen(for tab: AppTab) -> some View {
         switch tab {
         case .home: HomeView()
-        case .library: SignedAppsView()
+        case .library: LibraryView()
         case .settings: SettingsView()
         }
     }

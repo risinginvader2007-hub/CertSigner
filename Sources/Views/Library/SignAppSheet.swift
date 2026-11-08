@@ -10,18 +10,17 @@ struct SignAppSheet: View {
 
     @EnvironmentObject private var certificates: CertificateStore
     @EnvironmentObject private var library: LibraryStore
-    @EnvironmentObject private var signedApps: SignedAppsStore
+    @EnvironmentObject private var queue: SigningQueue
     @EnvironmentObject private var toasts: ToastCenter
     @EnvironmentObject private var router: TabRouter
     @Environment(\.dismiss) private var dismiss
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
 
-    @StateObject private var job = SigningJob()
     @State private var certificateID: UUID?
     @State private var options = SigningOptions()
+    /// True once the job is queued (the staged IPA must then be kept).
     @State private var started = false
     @State private var shakes = 0
-    @State private var installTarget: SignedApp?
 
     private var certificate: Certificate? {
         certificates.certificates.first { $0.id == certificateID }
@@ -49,43 +48,26 @@ struct SignAppSheet: View {
             ScrollView {
                 VStack(spacing: 20) {
                     header
-                    if started {
-                        SigningProgressView(
-                            currentStep: job.step,
-                            progress: job.progress,
-                            log: job.log,
-                            result: job.result,
-                            failureMessage: job.errorMessage
-                        )
-                        if job.result != nil { resultActions }
-                    } else {
-                        certificateSection
-                        optionsSection
-                        if !issues.isEmpty { issuesSection }
-                        PrimaryButton(title: "Sign", systemImage: "signature") { start() }
-                            .disabled(hasErrors)
-                            .shake(shakes)
-                    }
+                    certificateSection
+                    optionsSection
+                    if !issues.isEmpty { issuesSection }
+                    PrimaryButton(title: "Sign", systemImage: "signature") { start() }
+                        .disabled(hasErrors)
+                        .shake(shakes)
                 }
                 .padding(Theme.padding)
-                .animation(Theme.spring, value: started)
                 .animation(Theme.spring, value: issues)
             }
             .background(Theme.background.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Sign App")
+            .navigationTitle("Review & Sign")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(job.result == nil ? "Cancel" : "Done") { dismiss() }
-                        .disabled(job.isRunning)
+                    Button("Cancel") { dismiss() }
                 }
             }
             .modifier(ToastHost(center: toasts))
-        }
-        .interactiveDismissDisabled(job.isRunning)
-        .sheet(item: $installTarget) { app in
-            InstallSheet(app: app)
         }
         .onAppear {
             prefill()
@@ -98,7 +80,8 @@ struct SignAppSheet: View {
             }
         }
         .onDisappear {
-            if discardIfUnsigned && job.result != .success && !job.isRunning {
+            // Not queued → the staged IPA isn't needed any more.
+            if discardIfUnsigned && !started {
                 library.delete(app)
             }
         }
@@ -203,38 +186,6 @@ struct SignAppSheet: View {
         )
     }
 
-    @ViewBuilder
-    private var resultActions: some View {
-        VStack(spacing: 12) {
-            if job.result == .success, let signed = job.signedApp {
-                PrimaryButton(title: "Install Now", systemImage: "arrow.down.app") {
-                    installTarget = signed
-                }
-                ShareLink(item: signedApps.ipaURL(for: signed)) {
-                    Label("Share Signed IPA", systemImage: "square.and.arrow.up")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.roundedRectangle(radius: 16))
-                PrimaryButton(title: "View in Library", systemImage: "square.stack.3d.up", style: .tinted) {
-                    router.attentionOnly = false
-                    router.tab = .library
-                    dismiss()
-                }
-            } else {
-                PrimaryButton(title: "Try Again", systemImage: "arrow.clockwise") {
-                    withAnimation(Theme.spring) {
-                        job.reset()
-                        started = false
-                    }
-                }
-            }
-        }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
     // MARK: Actions
 
     private func prefill() {
@@ -251,23 +202,11 @@ struct SignAppSheet: View {
         }
         var finalOptions = options
         if finalOptions.trimmedBundleID == app.bundleID { finalOptions.bundleID = "" }
-        let password = certificates.password(for: certificate.id) ?? ""
-        withAnimation(Theme.spring) { started = true }
-        Task {
-            await job.run(
-                app: app,
-                ipaURL: library.ipaURL(for: app),
-                iconURL: library.iconURL(for: app),
-                certificate: certificate,
-                p12URL: certificates.p12URL(for: certificate.id),
-                profileURL: certificates.profileURL(for: certificate.id),
-                password: password,
-                options: finalOptions,
-                store: signedApps
-            )
-            if job.result == .success {
-                toasts.show("Signed \(job.signedApp?.name ?? app.name)", kind: .success)
-            }
-        }
+        started = true
+        queue.enqueue(app: app, certificateID: certificate.id, options: finalOptions)
+        Haptics.impact(.medium)
+        router.attentionOnly = false
+        withAnimation(Theme.spring) { router.tab = .library }
+        dismiss()
     }
 }

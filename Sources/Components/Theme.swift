@@ -39,6 +39,14 @@ enum SettingsKeys {
     static let libraryLayout = "library.layout"
     static let librarySort = "library.sort"
     static let installMethod = "install.method"
+    static let autoInstall = "signing.autoInstall"
+    static let deleteOriginal = "signing.deleteOriginal"
+    static let defaultRemoveExtensions = "signing.defaultRemoveExtensions"
+    static let defaultKeepBundleID = "signing.defaultKeepBundleID"
+
+    static func bool(_ key: String, default value: Bool) -> Bool {
+        UserDefaults.standard.object(forKey: key) as? Bool ?? value
+    }
 }
 
 enum AppearanceOption: String, CaseIterable, Identifiable {

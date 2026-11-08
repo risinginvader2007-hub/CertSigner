@@ -1,7 +1,7 @@
 import Foundation
 
 /// Optional edits applied before signing. Empty strings mean "keep the original".
-struct SigningOptions: Equatable, Sendable {
+struct SigningOptions: Equatable, Sendable, Codable {
     var displayName: String = ""
     var bundleID: String = ""
     var version: String = ""
