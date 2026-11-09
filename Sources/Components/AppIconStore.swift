@@ -10,8 +10,12 @@ final class AppIconStore: ObservableObject {
     /// nil = the primary (Ocean) icon.
     @Published private(set) var selected: String?
 
-    init(initial: String?) {
+    typealias Setter = (String?, @escaping (Error?) -> Void) -> Void
+    private let setter: Setter
+
+    init(initial: String?, setter: @escaping Setter = AppIconStore.setIcon) {
         selected = initial
+        self.setter = setter
     }
 
     var supportsAlternateIcons: Bool { UIApplication.shared.supportsAlternateIcons }
@@ -32,7 +36,7 @@ final class AppIconStore: ObservableObject {
         Haptics.impact(.light)
         withAnimation(animation) { selected = name }
         isChanging = true
-        Self.setIcon(name) { [weak self] error in
+        setter(name) { [weak self] error in
             Task { @MainActor in
                 guard let self else { return }
                 self.isChanging = false
