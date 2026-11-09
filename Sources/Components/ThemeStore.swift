@@ -2,73 +2,70 @@ import SwiftUI
 import UIKit
 
 /// The live accent theme, in one observable object. RootView feeds `accent` / `gradient` into
-/// `.tint`, `\.themeAccent` and `\.themeGradient`, so every view (background blobs, buttons, icons,
-/// tab bar, progress bars, badges) reads the same values.
+/// `.tint`, `\.themeAccent` and `\.themeGradient`, so every view reads the same values.
 ///
-/// Changing the accent runs ONE shared 0.6 s ease-in-out colour interpolation driven by a display
-/// link: each frame publishes the in-between colours, so everything fades together, with no per-view
-/// animations to fall out of sync, no instant jumps and no flicker. When it finishes, the exact
-/// target colours are published.
+/// An accent change publishes ONCE, inside one shared 0.35 s ease-in-out animation: every view
+/// that reads the accent re-renders a single time and SwiftUI interpolates the colours on the
+/// render side, so nothing re-renders per frame. The animated background (a Canvas that redraws
+/// itself anyway) blends its own colours from `fade`, and a second publish clears `fade` when
+/// the transition is over. (Before: one publish per display-link frame, about 21 per change, and
+/// the whole tree re-rendered on each.)
 @MainActor
 final class ThemeStore: ObservableObject {
     static let transitionDuration: Double = Motion.themeCrossfade
 
-    @Published private(set) var accent: Color
-    @Published private(set) var gradient: [Color]
+    struct State: Equatable {
+        var accent: Color
+        var gradient: [Color]
+        var fade: ThemeFade?
+    }
+
+    @Published private(set) var state: State
+
+    var accent: Color { state.accent }
+    var gradient: [Color] { state.gradient }
+    var fade: ThemeFade? { state.fade }
+    /// True while a colour transition runs (the background holds its drift still meanwhile).
+    var isTransitioning: Bool { state.fade != nil }
 
     private var option: AccentOption
-    private var link: CADisplayLink?
-    private var linkTarget: DisplayLinkTarget?
-    private var start: CFTimeInterval = 0
-    private var fromAccent = RGBA.clear
-    private var toAccent = RGBA.clear
-    private var fromStops: [RGBA] = []
-    private var toStops: [RGBA] = []
+    private var finishTask: Task<Void, Never>?
 
     init(option: AccentOption) {
         self.option = option
-        accent = option.color
-        gradient = option.gradient
+        state = State(accent: option.color, gradient: option.gradient, fade: nil)
     }
 
     /// Fades from what is on screen right now (also mid-fade) to `newOption`.
-    func apply(_ newOption: AccentOption) {
+    func apply(_ newOption: AccentOption, animated: Bool = true) {
         guard newOption != option else { return }
         let traits = Self.currentTraits
-        fromAccent = RGBA(accent, traits: traits)
-        fromStops = Self.samples(gradient, traits: traits)
+        let now = CACurrentMediaTime()
+        let fromStops = state.fade?.stops(at: now) ?? Self.samples(state.gradient, traits: traits)
         option = newOption
-        toAccent = RGBA(newOption.color, traits: traits)
-        toStops = Self.samples(newOption.gradient, traits: traits)
-        start = CACurrentMediaTime()
-        if link == nil {
-            let target = DisplayLinkTarget { [weak self] in self?.tick() }
-            let link = CADisplayLink(target: target, selector: #selector(DisplayLinkTarget.fire))
-            link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
-            link.add(to: .main, forMode: .common)
-            self.link = link
-            linkTarget = target
+        let fade = ThemeFade(from: fromStops, to: Self.samples(newOption.gradient, traits: traits),
+                             start: now, duration: Self.transitionDuration)
+        let next = State(accent: newOption.color, gradient: newOption.gradient, fade: animated ? fade : nil)
+        if animated {
+            AuroraClock.shared.hold("theme", true)
+            withAnimation(.easeInOut(duration: Self.transitionDuration)) { state = next }
+        } else {
+            state = next
         }
-    }
-
-    private func tick() {
-        let progress = min(1, (CACurrentMediaTime() - start) / Self.transitionDuration)
-        guard progress < 1 else {
-            link?.invalidate()
-            link = nil
-            linkTarget = nil
-            accent = option.color
-            gradient = option.gradient
-            return
+        finishTask?.cancel()
+        guard animated else { return }
+        finishTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64((Self.transitionDuration + 0.05) * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            var done = self.state
+            done.fade = nil
+            self.state = done
+            AuroraClock.shared.hold("theme", false)
         }
-        // easeInOut (cubic)
-        let t = progress < 0.5 ? 4 * progress * progress * progress : 1 - pow(-2 * progress + 2, 3) / 2
-        accent = fromAccent.mixed(with: toAccent, t).color
-        gradient = zip(fromStops, toStops).map { $0.mixed(with: $1, t).color }
     }
 
     /// Gradients have 2 or 3 stops; sample at 0, ½, 1 so any two can be blended.
-    private static func samples(_ colors: [Color], traits: UITraitCollection) -> [RGBA] {
+    static func samples(_ colors: [Color], traits: UITraitCollection) -> [RGBA] {
         let stops = colors.map { RGBA($0, traits: traits) }
         guard let first = stops.first else { return [.clear, .clear, .clear] }
         guard stops.count > 1 else { return [first, first, first] }
@@ -90,11 +87,39 @@ final class ThemeStore: ObservableObject {
     }
 }
 
-private final class DisplayLinkTarget: NSObject {
-    private let action: () -> Void
-    init(_ action: @escaping () -> Void) { self.action = action }
-    @objc func fire(_ link: CADisplayLink) { action() }
+/// One accent transition for views that draw every frame themselves (the background Canvas):
+/// blended gradient stops at any moment, with the same 0.35 s ease-in-out curve.
+struct ThemeFade: Equatable {
+    var from: [RGBA]
+    var to: [RGBA]
+    var start: CFTimeInterval
+    var duration: Double
+
+    func progress(at time: CFTimeInterval) -> Double {
+        let p = min(1, max(0, (time - start) / duration))
+        return p < 0.5 ? 4 * p * p * p : 1 - pow(-2 * p + 2, 3) / 2
+    }
+
+    func isRunning(at time: CFTimeInterval) -> Bool { time - start < duration }
+
+    func stops(at time: CFTimeInterval) -> [RGBA] {
+        let t = progress(at: time)
+        return zip(from, to).map { $0.mixed(with: $1, t) }
+    }
 }
+
+private struct ThemeFadeKey: EnvironmentKey {
+    static let defaultValue: ThemeFade? = nil
+}
+
+extension EnvironmentValues {
+    /// The accent transition in progress, if any (read only by views that draw per frame).
+    var themeFade: ThemeFade? {
+        get { self[ThemeFadeKey.self] }
+        set { self[ThemeFadeKey.self] = newValue }
+    }
+}
+
 
 struct RGBA: Equatable {
     var r: Double, g: Double, b: Double, a: Double
@@ -175,9 +200,16 @@ final class AuroraClock {
         accumulated + (resumedAt.map { max(0, date.timeIntervalSince($0)) } ?? 0)
     }
 
-    func setRunning(_ running: Bool) {
+    /// Reasons the drift is held still (app inactive, scrolling, sheet up, accent transition).
+    /// The clock stops while any hold is on, so the lights resume where they were (no jump).
+    private var holds: Set<String> = []
+
+    func setRunning(_ running: Bool) { hold("app", !running) }
+
+    func hold(_ reason: String, _ on: Bool) {
+        if on { holds.insert(reason) } else { holds.remove(reason) }
         let now = Date()
-        if running {
+        if holds.isEmpty {
             if resumedAt == nil { resumedAt = now }
         } else if let resumedAt {
             accumulated += max(0, now.timeIntervalSince(resumedAt))

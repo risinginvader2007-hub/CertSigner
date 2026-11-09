@@ -1,4 +1,5 @@
 import SwiftUI
+import QuartzCore
 
 // Design system: typography, glass, glow, symbol effects, aurora background and shared controls.
 // Tokens (colours, spacing, radii, motion) live in Theme.swift.
@@ -176,18 +177,25 @@ private struct SymbolVariableColor: ViewModifier {
 
 // MARK: - Aurora background
 
-/// Cheap animated aurora: a few large radial gradients drifting slowly over the base colour.
-/// No blur filters (radial gradients are already soft). Static with Reduce Motion.
+/// Cheap animated aurora: a few large radial gradients drifting slowly over the base colour,
+/// drawn by ONE Canvas (Metal-backed via drawingGroup) instead of a view per light: no blur
+/// filters, no per-frame view diffing. Capped at 30 fps (the drift is slow, so 30 looks the same).
+/// Holds still with Reduce Motion, Low Power Mode, the setting off, on hidden tabs, while
+/// scrolling, while a sheet is up and during accent transitions (the colours still cross-fade).
 struct AuroraBackground: View {
     var intensity: Double = 1
 
     @Environment(\.themeGradient) private var gradient
+    @Environment(\.themeFade) private var fade
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.auroraActive) private var active
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(SettingsKeys.backgroundAnimation) private var animationEnabled = true
     @ObservedObject private var power = PowerMonitor.shared
+    @ObservedObject private var activity = BackgroundActivity.shared
+
+    static let frameRate: Double = 30
 
     /// One blob: its own looping path (a slow figure-eight), speed, size and opacity breathing.
     private struct Blob {
@@ -207,62 +215,54 @@ struct AuroraBackground: View {
         Blob(colorPosition: 0.25, size: 1.05, base: CGPoint(x: 0.30, y: 0.78), amplitude: CGSize(width: 0.22, height: 0.07), period: 39, phase: 4.4, opacity: 0.35)
     ]
 
-    private var palette: [Color] { gradient.isEmpty ? Theme.signature : gradient }
-
-    private func color(at position: Double) -> Color {
-        let colors = palette
+    private static func color(at position: Double, in colors: [Color]) -> Color {
         let index = Int((position * Double(colors.count - 1)).rounded())
         return colors[min(max(index, 0), colors.count - 1)]
     }
 
-    /// Moving only on the visible screen, with the app active, the setting on and Reduce Motion off.
-    /// Otherwise the timeline pauses and the blobs hold still (the static version).
-    private var animating: Bool {
-        active && scenePhase == .active && animationEnabled && !reduceMotion
+    /// Drifting only on the visible screen, app active, setting on, Reduce Motion and Low Power
+    /// off, not scrolling and no sheet up. Otherwise the timeline pauses (the static version).
+    private var drifting: Bool {
+        active && scenePhase == .active && animationEnabled && !reduceMotion && !power.lowPower && !activity.paused
     }
 
     var body: some View {
         // Bright, glowing lights: dimmer screens (intensity < 1) still keep most of the glow.
         let strength = (scheme == .dark ? 0.85 : 0.36) * (0.55 + 0.45 * intensity)
-        // Low Power Mode: same motion at 15 fps (the drift is slow, so it still looks smooth).
-        TimelineView(.animation(minimumInterval: power.lowPower ? 1.0 / 15 : 1.0 / 60, paused: !animating)) { context in
+        let dark = scheme == .dark
+        let base = gradient.isEmpty ? Theme.signature : gradient
+        let fade = self.fade
+        // An accent transition redraws for its 0.35 s even when the drift is paused.
+        TimelineView(.animation(minimumInterval: 1 / Self.frameRate, paused: !(drifting || (fade != nil && active)))) { context in
             let time = AuroraClock.shared.time(at: context.date)
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
-                ZStack {
-                    Theme.background
-                    ZStack {
-                        ForEach(Self.blobs.indices, id: \.self) { index in
-                            let blob = Self.blobs[index]
-                            let angle = 2 * Double.pi * time / blob.period + blob.phase
-                            let size = w * blob.size * CGFloat(1 + 0.12 * sin(angle + 1.1))
-                            // Each light brightens and dims on its own rhythm (≈ 65 – 100 %).
-                            let pulse = 0.825 + 0.175 * sin(angle * 2 + 2.3)
-                            let opacity = min(1, strength * blob.opacity * pulse)
-                            blobView(color(at: blob.colorPosition), opacity: opacity, size: size)
-                                .position(x: w * (blob.base.x + blob.amplitude.width * CGFloat(sin(angle))),
-                                          y: h * (blob.base.y + blob.amplitude.height * CGFloat(sin(2 * angle + blob.phase))))
-                                // Overlapping lights add up and glow where they meet (dark mode).
-                                .blendMode(scheme == .dark ? .plusLighter : .normal)
-                        }
+            let palette = fade.map { $0.stops(at: CACurrentMediaTime()).map(\.color) } ?? base
+            Canvas { ctx, size in
+                ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Theme.background))
+                // The lights add up and glow where they meet (dark mode), composited over the base.
+                ctx.drawLayer { layer in
+                    if dark { layer.blendMode = .plusLighter }
+                    for blob in Self.blobs {
+                        let angle = 2 * Double.pi * time / blob.period + blob.phase
+                        let diameter = size.width * blob.size * CGFloat(1 + 0.12 * sin(angle + 1.1))
+                        // Each light brightens and dims on its own rhythm (≈ 65 – 100 %).
+                        let pulse = 0.825 + 0.175 * sin(angle * 2 + 2.3)
+                        let opacity = min(1, strength * blob.opacity * pulse)
+                        let center = CGPoint(x: size.width * (blob.base.x + blob.amplitude.width * CGFloat(sin(angle))),
+                                             y: size.height * (blob.base.y + blob.amplitude.height * CGFloat(sin(2 * angle + blob.phase))))
+                        let color = Self.color(at: blob.colorPosition, in: palette)
+                        let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)
+                        layer.fill(Path(ellipseIn: rect), with: .radialGradient(
+                            Gradient(colors: [color.opacity(opacity), color.opacity(opacity * 0.55), color.opacity(0)]),
+                            center: center, startRadius: 0, endRadius: diameter / 2))
                     }
-                    .frame(width: w, height: h)
-                    .drawingGroup()
                 }
-                .frame(width: w, height: h)
             }
+            .drawingGroup()
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-    }
-
-    private func blobView(_ color: Color, opacity: Double, size: CGFloat) -> some View {
-        Circle()
-            .fill(RadialGradient(colors: [color.opacity(opacity), color.opacity(opacity * 0.55), color.opacity(0)],
-                                 center: .center, startRadius: 0, endRadius: size / 2))
-            .frame(width: size, height: size)
+        .onAppear { BackgroundActivity.shared.installIfNeeded() }
     }
 }
 
@@ -405,8 +405,15 @@ extension View {
     /// iOS 26+: the sheet container is left completely to the system (no corner radius, background
     /// or clip override), so it gets native Liquid Glass whose corners follow the screen's curve.
     /// iOS 16.4–25: large continuous corners as before.
-    @ViewBuilder
     func sheetChrome() -> some View {
+        sheetChromeStyle()
+            // The background behind a sheet holds still while it's up.
+            .onAppear { BackgroundActivity.shared.sheetAppeared() }
+            .onDisappear { BackgroundActivity.shared.sheetDisappeared() }
+    }
+
+    @ViewBuilder
+    private func sheetChromeStyle() -> some View {
         if #available(iOS 26.0, *) {
             self.roundedDesign()
                 .presentationDragIndicator(.visible)

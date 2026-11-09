@@ -38,15 +38,17 @@ struct CardSurface: ViewModifier {
         return content
             .background(
                 ZStack {
+                    // The shadow belongs to the single base shape (cheap path shadow) rather than
+                    // to the layered group, which needed an offscreen pass per card.
                     shape.fill(Theme.surface)
+                        .shadow(color: (glow ?? .black).opacity(glow == nil ? (dark ? 0.35 : 0.07) : 0.28),
+                                radius: glow == nil ? 14 : 18, x: 0, y: glow == nil ? 6 : 8)
                     // Inner highlight: light catching the top edge.
                     shape.fill(
                         LinearGradient(colors: [Color.white.opacity(dark ? 0.055 : 0.5), .clear],
                                        startPoint: .top, endPoint: .center)
                     )
                 }
-                .shadow(color: (glow ?? .black).opacity(glow == nil ? (dark ? 0.35 : 0.07) : 0.28),
-                        radius: glow == nil ? 14 : 18, x: 0, y: glow == nil ? 6 : 8)
             )
             .overlay(
                 shape.strokeBorder(

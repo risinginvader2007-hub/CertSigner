@@ -603,7 +603,7 @@ struct SignedAppListRow: View {
             HStack(spacing: Space.x2) {
                 Button(action: onInstall) {
                     actionLabel("Install", systemImage: "arrow.down.app.fill", filled: true)
-                        .glassShine(in: Capsule())
+                        .glassShine(in: Capsule(), sweep: false)
                 }
                 .buttonStyle(ShinePressStyle(shape: Capsule(), scale: 0.95))
                 Button(action: onResign) {

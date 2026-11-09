@@ -11,13 +11,15 @@ extension View {
         modifier(GlassShine(shape: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)))
     }
 
-    func glassShine<S: InsettableShape>(in shape: S) -> some View {
-        modifier(GlassShine(shape: shape))
+    func glassShine<S: InsettableShape>(in shape: S, sweep: Bool = true) -> some View {
+        modifier(GlassShine(shape: shape, sweep: sweep))
     }
 }
 
 struct GlassShine<S: InsettableShape>: ViewModifier {
     let shape: S
+    /// false for repeated list rows: keep the static lit edge, skip the looping sweep.
+    var sweep: Bool = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.auroraActive) private var screenActive
@@ -27,7 +29,7 @@ struct GlassShine<S: InsettableShape>: ViewModifier {
 
     func body(content: Content) -> some View {
         // The sweep only runs on the visible tab, with the app active, Reduce Motion off and Low Power off.
-        let sweeping = !reduceMotion && screenActive && scenePhase == .active && !power.lowPower
+        let sweeping = sweep && !reduceMotion && screenActive && scenePhase == .active && !power.lowPower
         let dark = scheme == .dark
         return content.overlay(
             ZStack {

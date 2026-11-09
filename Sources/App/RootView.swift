@@ -35,6 +35,7 @@ struct RootView: View {
             .tint(theme.accent)
             .environment(\.themeAccent, theme.accent)
             .environment(\.themeGradient, theme.gradient)
+            .environment(\.themeFade, theme.fade)
             .environmentObject(theme)
             .onChange(of: accent) { newValue in theme.apply(newValue) }
             .onChange(of: scenePhase) { phase in AuroraClock.shared.setRunning(phase == .active) }
