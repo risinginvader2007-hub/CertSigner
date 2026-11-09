@@ -35,9 +35,15 @@ for ext in Share Widget; do
 done
 zip -qry "$F/test.ipa" Payload
 
-"$OPENSSL" req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 30 \
+# A test CA stands in for Apple's WWDR intermediate; the leaf is issued by it and the p12 carries the chain.
+"$OPENSSL" req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.pem -days 60 \
+  -subj "/CN=CertSigner Test WWDR CA/O=CertSigner Test/C=US" \
+  -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
+"$OPENSSL" req -newkey rsa:2048 -nodes -keyout key.pem -out leaf.csr \
   -subj "/CN=iPhone Distribution: CertSigner Test (ABCDE12345)/OU=ABCDE12345/O=CertSigner Test/C=US" 2>/dev/null
-"$OPENSSL" pkcs12 -export -inkey key.pem -in cert.pem -out "$F/cert.p12" -passout pass:test -name "CertSigner Test"
+printf "basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=codeSigning\n" > leaf.ext
+"$OPENSSL" x509 -req -in leaf.csr -CA ca.pem -CAkey ca.key -CAcreateserial -days 30 -extfile leaf.ext -out cert.pem 2>/dev/null
+"$OPENSSL" pkcs12 -export -inkey key.pem -in cert.pem -certfile ca.pem -out "$F/cert.p12" -passout pass:test -name "CertSigner Test"
 DER_B64=$("$OPENSSL" x509 -in cert.pem -outform DER | base64 | tr -d '\n')
 
 cat > profile.plist <<EOF
