@@ -99,6 +99,16 @@ private struct AppButtonBody: View {
     }
 }
 
+/// Press feedback for a tap row inside a card: a faint highlight, no scale (so the card's
+/// clipped edge never shifts and no corner peeks out).
+struct RowPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .overlay(Color.primary.opacity(configuration.isPressed ? 0.06 : 0).allowsHitTesting(false))
+            .animation(Motion.fade, value: configuration.isPressed)
+    }
+}
+
 extension View {
     /// A button placed directly in a List/Form section: no row card behind it (so the card above
     /// keeps its rounded corners), no insets, a little vertical breathing room.

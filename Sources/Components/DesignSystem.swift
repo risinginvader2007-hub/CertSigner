@@ -64,10 +64,12 @@ extension View {
     func glassSurface(cornerRadius: CGFloat = Theme.corner, interactive: Bool = false) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
+            // Concentric with the container (the screen / sheet), so a panel near the device's
+            // edge follows its corner curve instead of using a fixed radius.
             if interactive {
-                self.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                self.glassEffect(.regular.interactive(), in: ConcentricRectangle())
             } else {
-                self.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                self.glassEffect(.regular, in: ConcentricRectangle())
             }
         } else {
             self.modifier(MaterialGlass(cornerRadius: cornerRadius))
@@ -399,10 +401,16 @@ struct ExpiryRing: View {
 // MARK: - Sheet chrome
 
 extension View {
-    /// Consistent sheet look: SF Rounded, visible grabber, large continuous corners (iOS 16.4+).
+    /// Consistent sheet look: SF Rounded and a visible grabber.
+    /// iOS 26+: the sheet container is left completely to the system (no corner radius, background
+    /// or clip override), so it gets native Liquid Glass whose corners follow the screen's curve.
+    /// iOS 16.4–25: large continuous corners as before.
     @ViewBuilder
     func sheetChrome() -> some View {
-        if #available(iOS 16.4, *) {
+        if #available(iOS 26.0, *) {
+            self.roundedDesign()
+                .presentationDragIndicator(.visible)
+        } else if #available(iOS 16.4, *) {
             self.roundedDesign()
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(Radius.xl)

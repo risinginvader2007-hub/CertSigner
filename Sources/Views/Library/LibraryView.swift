@@ -745,7 +745,8 @@ struct LibraryFilterSheet: View {
                                 }
                             }
                             .padding(.horizontal, Space.x4)
-                            .cardBackground(cornerRadius: Radius.md)
+                            .cardBackground()
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                         }
                     }
                     if isFiltering {

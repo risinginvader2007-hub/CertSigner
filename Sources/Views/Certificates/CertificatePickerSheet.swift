@@ -92,11 +92,15 @@ struct CertificatePickerSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: Space.x2) {
-                    ForEach(certificates.certificates) { certificate in
+                // One card holding every row (clipped to the card), like grouped settings rows.
+                VStack(spacing: 0) {
+                    ForEach(Array(certificates.certificates.enumerated()), id: \.element.id) { index, certificate in
+                        if index > 0 { SoftDivider().padding(.leading, Space.x4 + 38 + Space.x3) }
                         row(certificate)
                     }
                 }
+                .cardBackground()
+                .clipShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
                 .padding(Theme.padding)
             }
             .navigationTitle(title)
@@ -152,14 +156,11 @@ struct CertificatePickerSheet: View {
             .padding(.horizontal, Space.x4)
             .padding(.vertical, Space.x3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
-                    .fill(selected ? accent.opacity(0.12) : Color.primary.opacity(0.05))
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+            .background(Rectangle().fill(selected ? accent.opacity(0.12) : Color.clear))
+            .animation(reduceMotion ? Motion.fade : Motion.selection, value: selected)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PressableButtonStyle(scale: 0.98))
+        .buttonStyle(RowPressStyle())
         .accessibilityLabel("\(certificate.displayName), \(certificate.typeAndExpiry)")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
