@@ -20,8 +20,9 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.defaultRemoveExtensions) private var defaultRemoveExtensions = false
     @AppStorage(SettingsKeys.defaultKeepBundleID) private var defaultKeepBundleID = false
 
-    @State private var storage: [StorageItem] = []
-    @State private var loadingStorage = true
+    @EnvironmentObject private var signedApps: SignedAppsStore
+    @ObservedObject private var storageModel = StorageModel.shared
+    @Environment(\.themeAccent) private var accentColor
     @State private var logURL: URL?
 
     private var appVersion: String {
@@ -48,8 +49,8 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(AuroraBackground(intensity: 0.5))
             .navigationTitle("Settings")
-            .task { await refreshStorage() }
-            .refreshable { await refreshStorage() }
+            .onAppear { refreshStorage() }
+            .refreshable { refreshStorage() }
         }
     }
 
@@ -230,62 +231,123 @@ struct SettingsView: View {
 
     // MARK: Storage
 
+    /// Imported IPAs no signing job still needs.
+    private var unusedImportIDs: Set<String> {
+        let pending = Set(queue.tasks.compactMap { task -> UUID? in
+            if case .library(let id) = task.source { return id }
+            return nil
+        })
+        return Set(library.apps.filter { !pending.contains($0.id) }.map(\.id.uuidString))
+    }
+
+    private func bytes(_ entries: [StorageEntry]) -> Int64 { entries.reduce(0) { $0 + $1.bytes } }
+
+    private var cacheBytes: Int64 { storageModel.report?.bytes(.cache) ?? 0 }
+    private var unusedImportBytes: Int64 {
+        let unused = unusedImportIDs
+        return bytes(storageModel.report?.entries(.imports).filter { unused.contains($0.key) } ?? [])
+    }
+    private var appLogBytes: Int64 {
+        bytes(storageModel.report?.entries(.logs).filter { $0.name == "App log" } ?? [])
+    }
+    /// Cache + unused imported IPAs + logs older than 30 days.
+    private var reclaimableBytes: Int64 {
+        cacheBytes + unusedImportBytes + bytes(storageModel.report?.oldLogs ?? [])
+    }
+
     private var storageSection: some View {
         Section {
-            if loadingStorage && storage.isEmpty {
-                ForEach(0..<3, id: \.self) { _ in
-                    HStack {
-                        SkeletonBlock(width: 120, height: 14)
-                        Spacer()
-                        SkeletonBlock(width: 50, height: 14)
+            StorageSummaryCard(report: storageModel.report, calculating: storageModel.calculating,
+                               reclaimable: reclaimableBytes, onRefresh: refreshStorage)
+            if let report = storageModel.report {
+                ForEach(StorageCategory.allCases) { category in
+                    NavigationLink {
+                        StorageCategoryView(category: category)
+                    } label: {
+                        StorageCategoryRow(category: category, report: report)
                     }
                 }
+                storageExtras(report)
             } else {
-                StorageBar(items: storage)
-                    .padding(.vertical, Space.x2)
-                ForEach(storage) { item in
-                    HStack {
-                        Label(item.title, systemImage: item.systemImage)
-                        Spacer()
-                        Text(item.bytes.byteString)
-                            .foregroundColor(.secondary)
-                            .monospacedDigit()
-                    }
-                    .accessibilityElement(children: .combine)
-                }
-                HStack {
-                    Text("Total").fontWeight(.semibold)
-                    Spacer()
-                    Text(storage.reduce(0) { $0 + $1.bytes }.byteString)
-                        .fontWeight(.semibold)
-                        .monospacedDigit()
-                }
+                LoadingSkeleton(rows: 5)
+                    .padding(.vertical, Space.x1)
             }
-            Button(role: .destructive) {
+            storageAction(title: "Clear Cache", systemImage: "sparkles", bytes: cacheBytes, tint: nil) {
+                let freed = cacheBytes
                 CacheService.clear()
-                toasts.show("Cache cleared", kind: .success)
-                Task { await refreshStorage() }
-            } label: {
-                Label("Clear Cache", systemImage: "sparkles")
+                finishStorageAction(freed: freed)
             }
-            Button(role: .destructive) {
-                Haptics.impact(.light)
+            storageAction(title: "Remove Unused IPAs", systemImage: "trash", bytes: unusedImportBytes, tint: Theme.danger) {
+                let freed = unusedImportBytes
                 withAnimation(Motion.smooth) { removeUnusedImports() }
-            } label: {
-                Label("Remove Unused Imported IPAs", systemImage: "trash")
+                finishStorageAction(freed: freed)
             }
         } header: {
             Text("Storage")
         }
     }
 
-    private func refreshStorage() async {
-        loadingStorage = true
-        let items = await Task.detached(priority: .utility) { StorageService.usage() }.value
-        withAnimation(Theme.spring) {
-            storage = items
-            loadingStorage = false
+    /// A full-width action in the shared button style that says how much it frees.
+    private func storageAction(title: String, systemImage: String, bytes: Int64, tint: Color?,
+                               action: @escaping () -> Void) -> some View {
+        PrimaryButton(title: bytes > 0 ? "\(title) · \(StorageService.format(bytes))" : "\(title) · Nothing to clear",
+                      systemImage: systemImage, style: .tinted, action: action)
+            .disabled(bytes <= 0 || storageModel.report == nil)
+            .environment(\.themeAccent, tint ?? accentColor)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: Space.x1, leading: 0, bottom: Space.x1, trailing: 0))
+    }
+
+    @ViewBuilder
+    private func storageExtras(_ report: StorageReport) -> some View {
+        let tips = storageTips(report)
+        if !tips.isEmpty || report.oldestSignedApp != nil || report.largestItem != nil {
+            VStack(alignment: .leading, spacing: Space.x2) {
+                ForEach(tips, id: \.self) { tip in
+                    Label(tip, systemImage: "lightbulb.fill")
+                        .font(TypeScale.caption)
+                        .foregroundColor(SemanticColor.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let largest = report.largestItem {
+                    Label("Largest item: \(largest.name) · \(StorageService.format(largest.bytes))", systemImage: "arrow.up.circle")
+                        .font(TypeScale.caption)
+                        .foregroundColor(SemanticColor.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                if let oldest = report.oldestSignedApp, let date = oldest.date {
+                    Label("Oldest signed app: \(oldest.name) · \(date.formatted(date: .abbreviated, time: .omitted))",
+                          systemImage: "clock")
+                        .font(TypeScale.caption)
+                        .foregroundColor(SemanticColor.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            .padding(.vertical, Space.x1)
         }
+    }
+
+    private func storageTips(_ report: StorageReport) -> [String] {
+        var tips: [String] = []
+        if report.bytes(.cache) > 50 * 1_000_000 {
+            tips.append("The cache is over 50 MB. Clearing it is safe; files are recreated when needed.")
+        }
+        if report.bytes(.logs) > 10 * 1_000_000 {
+            tips.append("Logs are over 10 MB. Export them below if you need them, then clear them.")
+        }
+        return tips
+    }
+
+    private func finishStorageAction(freed: Int64) {
+        Haptics.impact(.light)
+        toasts.show(freed > 0 ? "Freed \(StorageService.format(freed))" : "Nothing to clear", kind: .success)
+        refreshStorage()
+    }
+
+    private func refreshStorage() {
+        storageModel.refresh(signedApps: signedApps, library: library, certificates: certificates)
     }
 
     private func removeUnusedImports() {
@@ -295,8 +357,6 @@ struct SettingsView: View {
         })
         let unused = library.apps.filter { !pending.contains($0.id) }
         unused.forEach { library.delete($0) }
-        toasts.show("Removed \(unused.count) imported IPA\(unused.count == 1 ? "" : "s")", kind: .success)
-        Task { await refreshStorage() }
     }
 
     // MARK: Log
@@ -311,15 +371,14 @@ struct SettingsView: View {
                 Label("Preparing log…", systemImage: "doc.text")
                     .foregroundColor(.secondary)
             }
-            Button(role: .destructive) {
+            storageAction(title: "Clear Log", systemImage: "trash", bytes: appLogBytes, tint: Theme.danger) {
+                let freed = appLogBytes
                 AppLog.clear()
-                toasts.show("Log cleared", kind: .success)
+                finishStorageAction(freed: freed)
                 Task {
                     try? await Task.sleep(nanoseconds: 200_000_000)
                     logURL = AppLog.exportCopy()
                 }
-            } label: {
-                Label("Clear Log", systemImage: "trash")
             }
         } header: {
             Text("Diagnostics")
@@ -534,52 +593,3 @@ struct AppIconPicker: View {
     }
 }
 
-/// Storage usage as one animated, colour-coded bar (each area's share of the total).
-struct StorageBar: View {
-    let items: [StorageItem]
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var grown = false
-
-    private static let colors: [Color] = [Theme.violet, Theme.cyan, Theme.indigo, Theme.warning, Theme.success, .pink]
-
-    private var total: Int64 { max(1, items.reduce(0) { $0 + $1.bytes }) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Space.x2) {
-            GeometryReader { geo in
-                HStack(spacing: Space.hair) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        let share = CGFloat(item.bytes) / CGFloat(total)
-                        if item.bytes > 0 {
-                            Capsule()
-                                .fill(Self.colors[index % Self.colors.count])
-                                .frame(width: max(4, (geo.size.width - 12) * share * (grown ? 1 : 0)))
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(height: 10)
-            .background(Capsule().fill(Color.primary.opacity(0.07)))
-            .clipShape(Capsule())
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.x3) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        if item.bytes > 0 {
-                            HStack(spacing: Space.x1) {
-                                Circle().fill(Self.colors[index % Self.colors.count]).frame(width: 7, height: 7)
-                                Text(item.title).font(.caption2).foregroundColor(.secondary).lineLimit(1)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Storage breakdown")
-        .onAppear {
-            withAnimation(Motion.adaptive(Motion.smooth, reduceMotion: reduceMotion).delay(0.1)) { grown = true }
-        }
-    }
-}
