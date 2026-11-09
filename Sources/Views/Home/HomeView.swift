@@ -217,22 +217,22 @@ struct HomeView: View {
             .padding(.vertical, Space.x6)
             .padding(.horizontal, Theme.padding)
             .background(
-                RoundedRectangle(cornerRadius: Theme.corner + 4, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
                     .fill(.ultraThinMaterial)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: Theme.corner + 4, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
                     .strokeBorder(
                         LinearGradient(colors: gradient.map { $0.opacity(dropTargeted ? 1 : 0.6) },
                                        startPoint: .topLeading, endPoint: .bottomTrailing),
                         style: StrokeStyle(lineWidth: dropTargeted ? 2.5 : 2, lineCap: .round, dash: [9, 7], dashPhase: dashPhase)
                     )
             )
-            .glassShine(cornerRadius: Theme.corner + 4)
+            .glassShine(cornerRadius: Theme.corner)
             .shadow(color: accent.opacity(dropTargeted ? 0.45 : 0), radius: 22)
             .animation(Theme.bouncy, value: dropTargeted)
         }
-        .buttonStyle(ShinePressStyle(shape: RoundedRectangle(cornerRadius: Theme.corner + 4, style: .continuous), scale: 0.98))
+        .buttonStyle(ShinePressStyle(shape: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous), scale: 0.98))
         .onDrop(of: [UTType.item], isTargeted: $dropTargeted, perform: handleDrop)
         .accessibilityLabel("Import IPA")
         .accessibilityHint("Opens the Files picker")
@@ -254,7 +254,7 @@ struct HomeView: View {
                     .foregroundColor(.white)
                     .frame(width: 44, height: 44)
                     .background(
-                        RoundedRectangle(cornerRadius: Radius.sm + 1, style: .continuous)
+                        RoundedRectangle(cornerRadius: Radius.tile(44), style: .continuous)
                             .fill(LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
                     )
                     .ambientGlow(.pink, radius: 10, opacity: 0.4)
@@ -366,8 +366,7 @@ struct HomeView: View {
                     }
                     Spacer()
                     Button("Add") { importer.showCertificateImport = true }
-                        .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.capsule)
+                        .buttonStyle(.app(.primary, size: .compact))
                 }
             }
         }

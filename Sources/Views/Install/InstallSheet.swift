@@ -322,7 +322,7 @@ struct InstallSheet: View {
                 }
             }
             .padding(Space.x3)
-            .cardBackground(cornerRadius: Theme.smallCorner)
+            .cardBackground()
         }
     }
 
@@ -345,12 +345,8 @@ struct InstallSheet: View {
                 if let logURL = session.logFileURL() {
                     ShareLink(item: logURL) {
                         Label("Share Install Log", systemImage: "square.and.arrow.up")
-                            .font(.body.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 22)
-                            .padding(.vertical, Space.x3 + 2)
                     }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
+                    .buttonStyle(.app(.secondary))
                 }
                 PrimaryButton(title: "Install Settings", systemImage: "gearshape", style: .tinted) {
                     session.cancel()

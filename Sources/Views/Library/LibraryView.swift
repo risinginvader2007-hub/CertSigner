@@ -657,12 +657,8 @@ struct SigningLogSheet: View {
                     if let savedLog, let shareURL = SigningLogStore.shareableCopy(of: savedLog, appName: appName) {
                         ShareLink(item: shareURL) {
                             Label("Share signing log", systemImage: "square.and.arrow.up")
-                                .font(.body.weight(.semibold))
-                                .frame(maxWidth: .infinity, minHeight: 22)
-                                .padding(.vertical, Space.x4)
                         }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.roundedRectangle(radius: Radius.md))
+                        .buttonStyle(.app(.secondary))
                         .transition(.opacity)
                     }
                     if let task = queue.tasks.first(where: { $0.id == taskID }), task.status == .failed {

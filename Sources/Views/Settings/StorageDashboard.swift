@@ -351,8 +351,7 @@ struct StorageCategoryView: View {
                             if needsConfirmation { confirmDeleteAll = true } else { deleteAll() }
                         }
                         .environment(\.themeAccent, Theme.danger)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets())
+                        .buttonRow()
                     }
                 }
             }

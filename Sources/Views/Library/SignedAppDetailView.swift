@@ -89,22 +89,14 @@ struct SignedAppDetailView: View {
                         }
                         ShareLink(item: signedApps.ipaURL(for: app)) {
                             Label("Share", systemImage: "square.and.arrow.up")
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, Space.x4)
                         }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.roundedRectangle(radius: 16))
+                        .buttonStyle(.app(.secondary))
                     }
                     if let signingLog {
                         ShareLink(item: signingLog) {
                             Label("Share signing log", systemImage: "doc.text")
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, Space.x4)
                         }
-                        .buttonStyle(.bordered)
-                        .buttonBorderShape(.roundedRectangle(radius: 16))
+                        .buttonStyle(.app(.secondary))
                     }
                     PrimaryButton(title: "Delete", systemImage: "trash", style: .tinted) { deleteNow(app) }
                         .environment(\.themeAccent, Theme.danger)

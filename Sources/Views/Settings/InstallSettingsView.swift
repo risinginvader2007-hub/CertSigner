@@ -57,10 +57,6 @@ struct InstallSettingsView: View {
             Section {
                 if let custom = serverCertificates.custom {
                     certificateRow(custom, source: .custom)
-                    Button("Remove My Certificate", role: .destructive) {
-                        serverCertificates.removeCustom()
-                        toasts.show("Removed your server certificate", kind: .success)
-                    }
                 }
                 NavigationLink {
                     CustomServerCertificateView()
@@ -71,6 +67,17 @@ struct InstallSettingsView: View {
                 Text("Your Own Domain")
             } footer: {
                 Text("Most reliable long-term: a hostname you own whose DNS A record is 127.0.0.1, with a trusted certificate (e.g. Let's Encrypt via DNS challenge). Used instead of backloop.dev when valid.")
+            }
+
+            if serverCertificates.custom != nil {
+                Section {
+                    PrimaryButton(title: "Remove My Certificate", systemImage: "trash", style: .tinted) {
+                        serverCertificates.removeCustom()
+                        toasts.show("Removed your server certificate", kind: .success)
+                    }
+                    .environment(\.themeAccent, Theme.danger)
+                    .buttonRow()
+                }
             }
 
             Section("If iOS says “Unable to Install”") {
@@ -181,13 +188,12 @@ struct CustomServerCertificateView: View {
             }
 
             Section {
-                Button {
+                PrimaryButton(title: "Save Certificate", systemImage: "checkmark.seal") {
                     save()
-                } label: {
-                    Text("Save Certificate").frame(maxWidth: .infinity).fontWeight(.semibold)
                 }
                 .disabled(certificatePEM == nil || keyPEM == nil || hostname.isEmpty)
                 .modifier(ShakeEffect(animatableData: CGFloat(shakes)))
+                .buttonRow()
             }
             }
             .softRowSeparators()

@@ -172,18 +172,25 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
     private var deviceSection: some View {
         Section {
             TextField("Paste your UDID", text: $udid)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
-            if !udid.isEmpty {
-                Button("Clear UDID", role: .destructive) { udid = "" }
-            }
         } header: {
             Text("This Device")
         } footer: {
             Text("Sideloaded apps can't read the UDID. Copy it from a computer (Finder or 3uTools), then paste it here. It's only used to check this iPhone is in your profiles.")
+        }
+        if !udid.isEmpty {
+            Section {
+                PrimaryButton(title: "Clear UDID", systemImage: "xmark.circle", style: .tinted) {
+                    withAnimation(Motion.smooth) { udid = "" }
+                }
+                .environment(\.themeAccent, Theme.danger)
+                .buttonRow()
+            }
         }
     }
 
@@ -255,6 +262,7 @@ struct SettingsView: View {
         cacheBytes + unusedImportBytes + bytes(storageModel.report?.oldLogs ?? [])
     }
 
+    @ViewBuilder
     private var storageSection: some View {
         Section {
             StorageSummaryCard(report: storageModel.report, calculating: storageModel.calculating,
@@ -272,6 +280,11 @@ struct SettingsView: View {
                 LoadingSkeleton(rows: 5)
                     .padding(.vertical, Space.x1)
             }
+        } header: {
+            Text("Storage")
+        }
+        // Actions sit under the card as buttons, so the card keeps all four rounded corners.
+        Section {
             storageAction(title: "Clear Cache", systemImage: "sparkles", bytes: cacheBytes, tint: nil) {
                 let freed = cacheBytes
                 CacheService.clear()
@@ -282,8 +295,6 @@ struct SettingsView: View {
                 withAnimation(Motion.smooth) { removeUnusedImports() }
                 finishStorageAction(freed: freed)
             }
-        } header: {
-            Text("Storage")
         }
     }
 
@@ -294,8 +305,7 @@ struct SettingsView: View {
                       systemImage: systemImage, style: .tinted, action: action)
             .disabled(bytes <= 0 || storageModel.report == nil)
             .environment(\.themeAccent, tint ?? accentColor)
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: Space.x1, leading: 0, bottom: Space.x1, trailing: 0))
+            .buttonRow()
     }
 
     @ViewBuilder
@@ -363,13 +373,20 @@ struct SettingsView: View {
 
     private var logSection: some View {
         Section {
+            // Both log actions are buttons (same capsule as Clear Log), not a row next to a pill.
             if let logURL {
                 ShareLink(item: logURL) {
                     Label("Export Log File", systemImage: "square.and.arrow.up")
                 }
+                .buttonStyle(.app(.secondary))
+                .buttonRow()
             } else {
-                Label("Preparing log…", systemImage: "doc.text")
-                    .foregroundColor(.secondary)
+                Button {} label: {
+                    Label("Preparing log…", systemImage: "doc.text")
+                }
+                .buttonStyle(.app(.secondary))
+                .disabled(true)
+                .buttonRow()
             }
             storageAction(title: "Clear Log", systemImage: "trash", bytes: appLogBytes, tint: Theme.danger) {
                 let freed = appLogBytes

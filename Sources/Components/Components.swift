@@ -153,11 +153,11 @@ struct StatTile: View {
                 .symbolBounce(value: value)
                 .frame(width: 34, height: 34)
                 .background(
-                    RoundedRectangle(cornerRadius: Radius.xs + 2, style: .continuous)
+                    RoundedRectangle(cornerRadius: Radius.tile(34), style: .continuous)
                         .fill(LinearGradient(colors: [tint.opacity(0.28), tint.opacity(0.10)],
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
                 )
-                .overlay(RoundedRectangle(cornerRadius: Radius.xs + 2, style: .continuous)
+                .overlay(RoundedRectangle(cornerRadius: Radius.tile(34), style: .continuous)
                     .strokeBorder(tint.opacity(0.3), lineWidth: Border.hairlineWidth))
                 .ambientGlow(tint, radius: 8, opacity: 0.35)
             Text(shown ?? value)

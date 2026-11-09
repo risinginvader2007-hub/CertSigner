@@ -73,6 +73,8 @@ enum Radius {
     static let xl: CGFloat = 28
     /// Fully rounded ends (use `Capsule()` where possible).
     static let pill: CGFloat = 999
+    /// Icon tiles: the same squircle proportion as an app icon (radius = 28% of the side).
+    static func tile(_ side: CGFloat) -> CGFloat { (side * 0.28).rounded() }
 
     static let small = sm
     static let medium = md

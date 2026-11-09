@@ -289,9 +289,9 @@ struct FilePickRow: View {
                     .font(.body.weight(.semibold))
                     .foregroundColor(isDone ? Theme.success : accent)
                     .frame(width: 36, height: 36)
-                    .background(RoundedRectangle(cornerRadius: Radius.xs + 2, style: .continuous)
+                    .background(RoundedRectangle(cornerRadius: Radius.tile(36), style: .continuous)
                         .fill((isDone ? Theme.success : accent).opacity(0.14)))
-                    .overlay(RoundedRectangle(cornerRadius: Radius.xs + 2, style: .continuous)
+                    .overlay(RoundedRectangle(cornerRadius: Radius.tile(36), style: .continuous)
                         .strokeBorder((isDone ? Theme.success : accent).opacity(0.3), lineWidth: 0.75))
                     .ambientGlow(isDone ? Theme.success : .clear, radius: 8, opacity: 0.4)
                 VStack(alignment: .leading, spacing: Space.hair) {

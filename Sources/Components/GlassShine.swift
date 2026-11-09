@@ -89,14 +89,17 @@ struct ShinePressStyle<S: Shape>: ButtonStyle {
     var scale: CGFloat = 0.97
 
     func makeBody(configuration: Configuration) -> some View {
-        ShinePressBody(configuration: configuration, shape: shape, scale: scale)
+        ShinePressEffect(isPressed: configuration.isPressed, shape: shape, scale: scale) { configuration.label }
     }
 }
 
-private struct ShinePressBody<S: Shape>: View {
-    let configuration: ButtonStyleConfiguration
+/// The press effect shared by `ShinePressStyle` and `AppButtonStyle`: a bright flash that
+/// follows the touch (clipped to `shape`) plus a small scale-down spring.
+struct ShinePressEffect<S: Shape, Content: View>: View {
+    let isPressed: Bool
     let shape: S
     let scale: CGFloat
+    @ViewBuilder let content: () -> Content
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var flash = false
@@ -104,7 +107,7 @@ private struct ShinePressBody<S: Shape>: View {
     @State private var touch: CGPoint?
 
     var body: some View {
-        configuration.label
+        content()
             .overlay(
                 GeometryReader { geo in
                     let size = geo.size
@@ -125,11 +128,11 @@ private struct ShinePressBody<S: Shape>: View {
                 .accessibilityHidden(true)
             )
             .contentShape(shape)
-            .scaleEffect(configuration.isPressed && !reduceMotion ? scale : 1)
-            .opacity(configuration.isPressed ? 0.92 : 1)
-            .animation(Motion.snappy, value: configuration.isPressed)
+            .scaleEffect(isPressed && !reduceMotion ? scale : 1)
+            .opacity(isPressed ? 0.92 : 1)
+            .animation(Motion.snappy, value: isPressed)
             .onAppear { TouchTracker.shared.installIfNeeded() }
-            .onChange(of: configuration.isPressed) { pressed in
+            .onChange(of: isPressed) { pressed in
                 if pressed {
                     touch = TouchTracker.shared.lastTouch
                     withAnimation(.easeOut(duration: 0.12)) { flash = true }

@@ -91,7 +91,7 @@ struct SigningProgressView: View {
                     .padding(Space.x3)
                 }
                 .frame(height: 150)
-                .cardBackground(cornerRadius: Theme.smallCorner)
+                .cardBackground()
                 .onChange(of: log.count) { _ in
                     if let last = log.last {
                         withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
