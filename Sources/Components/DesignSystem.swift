@@ -220,7 +220,8 @@ struct AuroraBackground: View {
     }
 
     var body: some View {
-        let strength = (scheme == .dark ? 0.30 : 0.16) * intensity
+        // Bright, glowing lights: dimmer screens (intensity < 1) still keep most of the glow.
+        let strength = (scheme == .dark ? 0.62 : 0.30) * (0.55 + 0.45 * intensity)
         // Low Power Mode: same motion at 15 fps (the drift is slow, so it still looks smooth).
         TimelineView(.animation(minimumInterval: power.lowPower ? 1.0 / 15 : 1.0 / 60, paused: !animating)) { context in
             let time = AuroraClock.shared.time(at: context.date)
@@ -233,11 +234,15 @@ struct AuroraBackground: View {
                         ForEach(Self.blobs.indices, id: \.self) { index in
                             let blob = Self.blobs[index]
                             let angle = 2 * Double.pi * time / blob.period + blob.phase
-                            let size = w * blob.size * CGFloat(1 + 0.08 * sin(angle + 1.1))
-                            let opacity = strength * blob.opacity * (0.85 + 0.15 * sin(angle + 2.3))
+                            let size = w * blob.size * CGFloat(1 + 0.12 * sin(angle + 1.1))
+                            // Each light brightens and dims on its own rhythm (≈ 65 – 100 %).
+                            let pulse = 0.825 + 0.175 * sin(angle * 2 + 2.3)
+                            let opacity = min(1, strength * blob.opacity * pulse)
                             blobView(color(at: blob.colorPosition), opacity: opacity, size: size)
                                 .position(x: w * (blob.base.x + blob.amplitude.width * CGFloat(sin(angle))),
                                           y: h * (blob.base.y + blob.amplitude.height * CGFloat(sin(2 * angle + blob.phase))))
+                                // Overlapping lights add up and glow where they meet (dark mode).
+                                .blendMode(scheme == .dark ? .plusLighter : .normal)
                         }
                     }
                     .frame(width: w, height: h)
@@ -253,8 +258,8 @@ struct AuroraBackground: View {
 
     private func blobView(_ color: Color, opacity: Double, size: CGFloat) -> some View {
         Circle()
-            .fill(RadialGradient(colors: [color.opacity(opacity), color.opacity(0)], center: .center,
-                                 startRadius: 0, endRadius: size / 2))
+            .fill(RadialGradient(colors: [color.opacity(opacity), color.opacity(opacity * 0.55), color.opacity(0)],
+                                 center: .center, startRadius: 0, endRadius: size / 2))
             .frame(width: size, height: size)
     }
 }
