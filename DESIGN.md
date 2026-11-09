@@ -28,12 +28,13 @@ states) are the only literals left.
 |---|---|---|
 | `Radius.xs` | 8 | Small icon tiles, skeleton blocks |
 | `Radius.sm` / `small` | 12 | Text fields, tonal strips, icon previews |
-| `Radius.md` / `medium` | 16 | Buttons, rows that leave during a delete, inner cards |
-| `Radius.lg` / `large` | 22 | Cards (`Theme.corner`) |
-| `Radius.xl` | 28 | Sheets and hero tiles |
+| `Radius.md` / `medium` | 16 | Rows that leave during a delete |
+| `Radius.lg` / `large` | 22 | Every card and container (`Theme.corner`); rows live inside one clipped card |
+| `Radius.xl` | 28 | Sheets before iOS 26 (iOS 26 sheets use the system shape) |
 | `Radius.pill` / `Capsule()` | ∞ | Pills, badges, segmented controls, toasts |
 
-Nested shapes: `Radius.inner(outer, padding:)` = outer − padding (minimum 4).
+Nested shapes: `Radius.inner(outer, padding:)` = outer − padding (minimum 4). Icon tiles:
+`Radius.tile(side)` = 28 % of the side (app-icon squircle).
 
 ### Type scale (`TypeScale`, SF Rounded via `.roundedDesign()`, all Dynamic Type)
 
@@ -68,8 +69,9 @@ Nested shapes: `Radius.inner(outer, padding:)` = outer − padding (minimum 4).
 
 Staggered entrances: 0.04 s per item, capped at 0.16 s so a list is fully in by about 0.3 s.
 
-**Theme changes.** Accent changes run one shared colour interpolation on `ThemeStore`
-(0.35 s ease-in-out, every view updates from the same values). System / Light / Dark switches use
+**Theme changes.** An accent change publishes once from `ThemeStore`, inside one 0.35 s
+ease-in-out animation, so each view re-renders once and SwiftUI interpolates the colours; the
+background Canvas blends its own colours from `ThemeFade`. System / Light / Dark switches use
 `AppearanceCrossfade`: a snapshot of the screen fades out over the new appearance, so there is
 never a white or black flash, even when switching quickly and repeatedly.
 
@@ -91,7 +93,7 @@ never a white or black flash, even when switching quickly and repeatedly.
 | `ErrorState` | `Components.swift` | Plain-language title and message, Retry, "Details" disclosure; full or compact |
 | `LoadingSkeleton`, `SkeletonBlock` | `Components.swift`, `Effects.swift` | Shimmering placeholder rows |
 | `ToastView` / `ToastCenter` | `ToastView.swift` | Below the nav bar; optional action (Undo) |
-| `PrimaryButton` | `PrimaryButton.swift` | filled / tinted / destructive; shine + touch flash |
+| `AppButtonStyle`, `PrimaryButton`, `.buttonRow()` | `PrimaryButton.swift` | The only action button: 52 pt capsule (primary / secondary / destructive; compact 36 pt inside a row); `.buttonRow()` puts it under a card in a List |
 | `SlidingSegmentedControl` | `SlidingSegmentedControl.swift` | One sliding highlight, equal segments, scrub, adjustable for VoiceOver |
 | `CertificatePickerSheet` | `Views/Certificates` | Long-list picker as a bottom sheet with spring checkmark |
 | `StorageRing`, `StorageSummaryCard`, `StorageCategoryRow` | `Views/Settings/StorageDashboard.swift` | Storage dashboard |
@@ -104,7 +106,10 @@ never a white or black flash, even when switching quickly and repeatedly.
 1. **Selection** always slides: any 2 to 5 option choice is a `SlidingSegmentedControl`; swatch
    pickers move one ring; long lists open a sheet whose checkmark springs in. No system `Menu` for
    choices with long labels.
-2. **Buttons** use `PrimaryButton`, `ShinePressStyle` or `PressableButtonStyle`. Everything inside
+2. **Two shapes only.** Actions (primary, secondary, destructive, Share) are `AppButtonStyle`
+   capsules; navigation and information are rows inside a card. Buttons in a List sit under the
+   card (`.buttonRow()`), never as the card's last row, so every card keeps four rounded corners.
+   Buttons use `AppButtonStyle`, `ShinePressStyle` or `PressableButtonStyle`. Everything inside
    a button (background, border, glow, shine) is clipped to the button's own shape and its hit
    area is `.contentShape(shape)`. Minimum 44 pt hit target. Icon-only buttons have a VoiceOver label.
 3. **Text** never wraps mid-word: identifiers use `.identifierText()`; certificates show
@@ -156,3 +161,13 @@ never a white or black flash, even when switching quickly and repeatedly.
   - Source screen has loading and empty states.
   - Counts animate with numeric transitions.
   - Staggered entrances are capped at 0.16 s.
+
+## Performance rules
+
+- Never publish per frame from an `ObservableObject` the whole tree reads. Animate one value
+  with `withAnimation`; views that draw every frame (Canvas) interpolate locally.
+- The background is one Canvas at 30 fps that holds still while scrolling, with a sheet up,
+  during accent changes, in Low Power Mode, with Reduce Motion and on hidden tabs
+  (`BackgroundActivity`, `AuroraClock` holds).
+- Shadows go on a single base shape, not on layered groups. No looping effects (shine sweep)
+  on repeated list rows.
