@@ -21,7 +21,7 @@ final class PerformanceTests: XCTestCase {
         XCTAssertGreaterThan(publishes, 0)
     }
 
-    private func renderMilliseconds<V: View>(_ make: (Double) -> V, frames: Int = 40) -> Double {
+    private func renderMilliseconds<V: View>(_ make: (Double) -> V, frames: Int = 120) -> Double {
         let size = CGSize(width: 440, height: 956)  // iPhone 16 Pro Max points
         func render(_ t: Double) {
             let renderer = ImageRenderer(content: make(t).frame(width: size.width, height: size.height))

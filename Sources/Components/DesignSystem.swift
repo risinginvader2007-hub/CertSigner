@@ -238,23 +238,22 @@ struct AuroraBackground: View {
             let palette = fade.map { $0.stops(at: CACurrentMediaTime()).map(\.color) } ?? base
             Canvas { ctx, size in
                 ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Theme.background))
-                // The lights add up and glow where they meet (dark mode), composited over the base.
-                ctx.drawLayer { layer in
-                    if dark { layer.blendMode = .plusLighter }
-                    for blob in Self.blobs {
-                        let angle = 2 * Double.pi * time / blob.period + blob.phase
-                        let diameter = size.width * blob.size * CGFloat(1 + 0.12 * sin(angle + 1.1))
-                        // Each light brightens and dims on its own rhythm (≈ 65 – 100 %).
-                        let pulse = 0.825 + 0.175 * sin(angle * 2 + 2.3)
-                        let opacity = min(1, strength * blob.opacity * pulse)
-                        let center = CGPoint(x: size.width * (blob.base.x + blob.amplitude.width * CGFloat(sin(angle))),
-                                             y: size.height * (blob.base.y + blob.amplitude.height * CGFloat(sin(2 * angle + blob.phase))))
-                        let color = Self.color(at: blob.colorPosition, in: palette)
-                        let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)
-                        layer.fill(Path(ellipseIn: rect), with: .radialGradient(
-                            Gradient(colors: [color.opacity(opacity), color.opacity(opacity * 0.55), color.opacity(0)]),
-                            center: center, startRadius: 0, endRadius: diameter / 2))
-                    }
+                // The lights add up and glow where they meet (dark mode). Drawn straight onto the
+                // near-black base: no extra transparency layer (that cost more than it saved).
+                if dark { ctx.blendMode = .plusLighter }
+                for blob in Self.blobs {
+                    let angle = 2 * Double.pi * time / blob.period + blob.phase
+                    let diameter = size.width * blob.size * CGFloat(1 + 0.12 * sin(angle + 1.1))
+                    // Each light brightens and dims on its own rhythm (≈ 65 – 100 %).
+                    let pulse = 0.825 + 0.175 * sin(angle * 2 + 2.3)
+                    let opacity = min(1, strength * blob.opacity * pulse)
+                    let center = CGPoint(x: size.width * (blob.base.x + blob.amplitude.width * CGFloat(sin(angle))),
+                                         y: size.height * (blob.base.y + blob.amplitude.height * CGFloat(sin(2 * angle + blob.phase))))
+                    let color = Self.color(at: blob.colorPosition, in: palette)
+                    let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)
+                    ctx.fill(Path(ellipseIn: rect), with: .radialGradient(
+                        Gradient(colors: [color.opacity(opacity), color.opacity(opacity * 0.55), color.opacity(0)]),
+                        center: center, startRadius: 0, endRadius: diameter / 2))
                 }
             }
             .drawingGroup()
