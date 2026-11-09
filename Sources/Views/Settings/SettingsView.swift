@@ -495,13 +495,18 @@ struct AppIconPicker: View {
     @Environment(\.themeGradient) private var gradient
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var ringSpace
-    @State private var current: String?
-    /// The ring only animates for real changes, not when the current icon is first read.
-    @State private var ready = false
+    @ObservedObject private var icons = AppIconStore.shared
+
+    /// Space between the icon/label and the ring; the ring's radius is concentric with the icon's.
+    private static let ringInset: CGFloat = 6
+    private static let iconRadius = Radius.sm
+    private var current: String? { icons.selected }
 
     private var currentOption: Option {
         options.first { $0.iconName == current } ?? options[0]
     }
+
+    private var selectionAnimation: Animation { reduceMotion ? Motion.fade : Motion.selection }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.x3) {
@@ -520,15 +525,11 @@ struct AppIconPicker: View {
                     Text("\(currentOption.title) icon").font(.caption).foregroundColor(.secondary)
                 }
             }
-            .animation(Motion.bouncy, value: current)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Current icon: \(currentOption.title)")
             picker
         }
-        .onAppear {
-            current = UIApplication.shared.alternateIconName
-            DispatchQueue.main.async { ready = true }
-        }
+        .onAppear { icons.sync() }
     }
 
     private var picker: some View {
@@ -543,52 +544,46 @@ struct AppIconPicker: View {
                             Image(option.preview)
                                 .resizable()
                                 .frame(width: 58, height: 58)
-                                .clipShape(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
-                                .background(
-                                    // Where the single sliding ring sits when this icon is selected.
-                                    RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
-                                        .fill(Color.clear)
-                                        .padding(-4)
-                                        .matchedGeometryEffect(id: option.id, in: ringSpace, properties: .frame, isSource: true)
-                                )
-                                .scaleEffect(selected ? 1.04 : 1)
+                                .clipShape(RoundedRectangle(cornerRadius: Self.iconRadius, style: .continuous))
                             Text(option.title)
                                 .font(.caption2.weight(selected ? .bold : .regular))
                                 .foregroundColor(selected ? accent : .secondary)
                         }
-                        .padding(Space.x1)
+                        .padding(Self.ringInset)
+                        .background(
+                            // Where the single sliding ring sits when this icon is selected.
+                            RoundedRectangle(cornerRadius: Self.iconRadius + Self.ringInset, style: .continuous)
+                                .fill(Color.clear)
+                                .matchedGeometryEffect(id: option.id, in: ringSpace, properties: .frame, isSource: true)
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: Self.iconRadius + Self.ringInset, style: .continuous))
                     }
-                    .buttonStyle(PressableButtonStyle(scale: 0.9))
+                    .buttonStyle(PressableButtonStyle(scale: 0.94))
                     .accessibilityLabel("\(option.title) icon")
                     .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
             .background {
-                RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
-                    .strokeBorder(LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing),
-                                  lineWidth: 3)
+                RoundedRectangle(cornerRadius: Self.iconRadius + Self.ringInset, style: .continuous)
+                    .strokeBorder(accent, lineWidth: 2.5)
                     .matchedGeometryEffect(id: currentOption.id, in: ringSpace, properties: .frame, isSource: false)
+                    .allowsHitTesting(false)
             }
-            .padding(.vertical, Space.x1)
-            .animation(ready ? (reduceMotion ? Motion.fade : Motion.selection) : nil, value: current)
+            // Room around the grid so the ring is never clipped by the scroll view or the card.
+            .padding(.horizontal, Space.x1)
+            .padding(.vertical, Space.x2)
         }
+        .padding(.horizontal, -Space.x1)
     }
 
     private func select(_ option: Option) {
-        guard UIApplication.shared.supportsAlternateIcons else {
+        guard current != option.iconName else { return }
+        guard icons.supportsAlternateIcons else {
             toasts.show("This copy of CertSigner can\'t change its icon.", kind: .warning)
             return
         }
-        guard current != option.iconName else { return }
-        UIApplication.shared.setAlternateIconName(option.iconName) { error in
-            Task { @MainActor in
-                if let error {
-                    toasts.show("Couldn't change icon: \(error.localizedDescription)", kind: .error)
-                } else {
-                    current = option.iconName
-                    Haptics.success()
-                }
-            }
+        icons.select(option.iconName, animation: selectionAnimation) { message in
+            toasts.show("Couldn't change icon: \(message)", kind: .error)
         }
     }
 }
