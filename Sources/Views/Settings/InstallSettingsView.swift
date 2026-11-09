@@ -4,6 +4,7 @@ struct InstallSettingsView: View {
     @EnvironmentObject private var serverCertificates: ServerCertificateStore
     @EnvironmentObject private var toasts: ToastCenter
     @AppStorage(SettingsKeys.installMethod) private var method: InstallMethod = .automatic
+    @AppStorage(SettingsKeys.installPaleraFallback) private var paleraFallback = true
 
     var body: some View {
         Form {
@@ -17,6 +18,16 @@ struct InstallSettingsView: View {
                 .padding(.vertical, Space.x1)
                 Text(method.title)
                     .font(TypeScale.subheadline.weight(.semibold))
+                if method != .localHTTPS {
+                    Toggle(isOn: $paleraFallback) {
+                        VStack(alignment: .leading, spacing: Space.hair) {
+                            Text("Fall back to Fully Local")
+                            Text("If api.palera.in doesn't respond, install with a server certificate instead (no third-party service).")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
             } header: {
                 Text("Install Method")
             } footer: {

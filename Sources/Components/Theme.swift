@@ -62,6 +62,8 @@ enum SettingsKeys {
     static let autoCloseInstall = "install.autoCloseSheet"
     static let signingMode = "signing.mode"
     static let backgroundAnimation = "ui.backgroundAnimation"
+    /// Semi-Local: use Fully Local instead when api.palera.in is unreachable and a server certificate exists.
+    static let installPaleraFallback = "install.paleraFallback"
 
     static func bool(_ key: String, default value: Bool) -> Bool {
         UserDefaults.standard.object(forKey: key) as? Bool ?? value

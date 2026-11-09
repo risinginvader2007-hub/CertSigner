@@ -16,6 +16,8 @@ final class LocalHTTPServer: @unchecked Sendable {
         case payloadProgress(Double)
         case payloadCompleted
         case payloadFailed(String)
+        /// One finished response: "GET /…/app.ipa → 200 · 412.3 MB in 18.2 s".
+        case served(String)
     }
 
     enum ServerError: LocalizedError {
@@ -50,11 +52,12 @@ final class LocalHTTPServer: @unchecked Sendable {
 
     // MARK: Lifecycle
 
-    /// Starts on a random port in 4000–8000 and returns it.
-    func start() async throws -> UInt16 {
+    /// Starts on a random port in 4000–8000 (never `avoiding`, e.g. the previous session's) and returns it.
+    func start(avoiding: UInt16? = nil) async throws -> UInt16 {
         var lastError = "unknown error"
         for _ in 0..<8 {
-            let port = UInt16.random(in: 4000...8000)
+            var port = UInt16.random(in: 4000...8000)
+            if port == avoiding { port = port == 8000 ? 4000 : port + 1 }
             do {
                 try await startListener(on: port)
                 return port
@@ -168,13 +171,17 @@ final class LocalHTTPServer: @unchecked Sendable {
         let agent = headers["user-agent"] ?? "-"
         onEvent(.requestDetail("\(method) \(path) range=\(headers["range"] ?? "-") agent=\(agent)"))
         onEvent(.request(method: method, path: path))
+        let started = Date()
+        let label = "\(method) \(Self.shortPath(path))"
 
         guard method == "GET" || method == "HEAD" else {
             sendSimple(405, "Method Not Allowed", on: connection)
+            onEvent(.served("\(label) → 405"))
             return
         }
         guard let resource = routes[path] else {
             sendSimple(404, "Not Found", on: connection)
+            onEvent(.served("\(label) → 404 (unknown path)"))
             return
         }
 
@@ -183,10 +190,24 @@ final class LocalHTTPServer: @unchecked Sendable {
         case .data(let data, let type):
             var response = header(status: "200 OK", contentType: type, length: Int64(data.count))
             if !headOnly { response.append(data) }
-            connection.send(content: response, completion: .contentProcessed { [weak self] _ in self?.finish(connection) })
+            connection.send(content: response, completion: .contentProcessed { [weak self] error in
+                self?.onEvent(.served("\(label) → \(error == nil ? "200" : "failed") · \(headOnly ? 0 : data.count) bytes in \(Self.elapsed(since: started))"))
+                self?.finish(connection)
+            })
         case .file(let url, let type):
-            stream(url, contentType: type, rangeHeader: headers["range"], headOnly: headOnly, on: connection)
+            stream(url, contentType: type, rangeHeader: headers["range"], headOnly: headOnly, label: label,
+                   started: started, on: connection)
         }
+    }
+
+    /// "/<token>/app.ipa" → "/…/app.ipa" (keeps the one-time token out of the visible log).
+    static func shortPath(_ path: String) -> String {
+        let parts = path.split(separator: "/")
+        return parts.count >= 2 ? "/…/" + parts.dropFirst().joined(separator: "/") : path
+    }
+
+    static func elapsed(since date: Date) -> String {
+        String(format: "%.1f s", Date().timeIntervalSince(date))
     }
 
     private func header(status: String, contentType: String, length: Int64, extra: [String] = []) -> Data {
@@ -228,10 +249,12 @@ final class LocalHTTPServer: @unchecked Sendable {
         return start <= end ? start...end : nil
     }
 
-    private func stream(_ url: URL, contentType: String, rangeHeader: String?, headOnly: Bool, on connection: NWConnection) {
+    private func stream(_ url: URL, contentType: String, rangeHeader: String?, headOnly: Bool, label: String,
+                        started: Date, on connection: NWConnection) {
         let size = ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.int64Value ?? 0
         guard size > 0, let handle = try? FileHandle(forReadingFrom: url) else {
             sendSimple(404, "Not Found", on: connection)
+            onEvent(.served("\(label) → 404 (IPA missing)"))
             onEvent(.payloadFailed("The signed IPA file is missing."))
             return
         }
@@ -245,10 +268,12 @@ final class LocalHTTPServer: @unchecked Sendable {
             : header(status: "206 Partial Content", contentType: contentType, length: length,
                      extra: ["Content-Range: bytes \(start)-\(end)/\(size)"])
 
+        let status = range == nil ? "200" : "206"
         connection.send(content: response, completion: .contentProcessed { [weak self] error in
             guard let self else { return }
             if error != nil || headOnly {
                 try? handle.close()
+                self.onEvent(.served("\(label) → \(error == nil ? status : "failed") · headers only, \(ByteCountFormatter.string(fromByteCount: length, countStyle: .file)) available"))
                 self.finish(connection)
                 return
             }
@@ -260,13 +285,16 @@ final class LocalHTTPServer: @unchecked Sendable {
                 connection.cancel()
                 return
             }
-            self.sendChunk(from: handle, remaining: length, total: length, on: connection)
+            self.sendChunk(from: handle, remaining: length, total: length, label: "\(label) → \(status)",
+                           started: started, on: connection)
         })
     }
 
-    private func sendChunk(from handle: FileHandle, remaining: Int64, total: Int64, on connection: NWConnection) {
+    private func sendChunk(from handle: FileHandle, remaining: Int64, total: Int64, label: String, started: Date,
+                           on connection: NWConnection) {
         if remaining <= 0 {
             try? handle.close()
+            onEvent(.served("\(label) · \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file)) in \(Self.elapsed(since: started))"))
             onEvent(.payloadCompleted)
             finish(connection)
             return
@@ -282,13 +310,15 @@ final class LocalHTTPServer: @unchecked Sendable {
             guard let self else { try? handle.close(); return }
             if let error {
                 try? handle.close()
+                let sent = total - remaining
+                self.onEvent(.served("\(label) · stopped after \(ByteCountFormatter.string(fromByteCount: sent, countStyle: .file)) of \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file)) (\(Self.elapsed(since: started)))"))
                 self.onEvent(.payloadFailed(error.localizedDescription))
                 connection.cancel()
                 return
             }
             let left = remaining - Int64(chunk.count)
             self.onEvent(.payloadProgress(Double(total - left) / Double(total)))
-            self.sendChunk(from: handle, remaining: left, total: total, on: connection)
+            self.sendChunk(from: handle, remaining: left, total: total, label: label, started: started, on: connection)
         })
     }
 }

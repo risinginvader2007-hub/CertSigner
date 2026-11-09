@@ -5,6 +5,8 @@ struct InstallSheet: View {
 
     @EnvironmentObject private var signedApps: SignedAppsStore
     @EnvironmentObject private var serverCertificates: ServerCertificateStore
+    @EnvironmentObject private var certificates: CertificateStore
+    @AppStorage(SettingsKeys.installPaleraFallback) private var paleraFallback = true
     @EnvironmentObject private var router: TabRouter
     @Environment(\.dismiss) private var dismiss
     @Environment(\.themeAccent) private var accent
@@ -34,9 +36,9 @@ struct InstallSheet: View {
     private var currentStage: Stage? {
         switch session.phase {
         case .idle, .preparing: return .server
-        case .waitingForPrompt, .manifestSent: return .prompt
+        case .waitingForPrompt, .manifestSent, .stalled: return .prompt
         case .downloading: return .transfer
-        case .installing: return .install
+        case .installing, .installed: return .install
         case .failed: return nil
         }
     }
@@ -90,12 +92,12 @@ struct InstallSheet: View {
         }
         // Success only (iOS took the whole app): show the checkmark ~1 s, then close.
         // Failures never auto-close. The server keeps its existing post-install grace period and stops itself.
-        .onChange(of: session.phase == .installing) { installed in
+        .onChange(of: session.phase.isSuccess) { installed in
             autoCloseTask?.cancel()
             guard installed, autoClose, session.appID == app.id else { return }
             autoCloseTask = Task {
                 try? await Task.sleep(nanoseconds: 1_100_000_000)
-                guard !Task.isCancelled, session.phase == .installing else { return }
+                guard !Task.isCancelled, session.phase.isSuccess else { return }
                 dismiss() // the success haptic already played when iOS took the app
 
             }
@@ -103,13 +105,22 @@ struct InstallSheet: View {
         .onDisappear { autoCloseTask?.cancel() }
     }
 
+    /// Runs in an unstructured task: the sheet's own `.task` being cancelled (dismissed or
+    /// re-presented) must never cancel the install session.
     private func begin() async {
+        let start = Task { @MainActor in await startSession() }
+        await start.value
+    }
+
+    private func startSession() async {
         await session.start(
             app: app,
             ipaURL: signedApps.ipaURL(for: app),
             iconURL: app.iconFileName.map { signedApps.folder(for: app.id).appendingPathComponent($0) },
             method: method,
-            certificates: serverCertificates
+            certificates: serverCertificates,
+            signingTeamID: certificates.certificates.first { $0.id == app.certificateID }?.profile?.teamID,
+            paleraFallback: paleraFallback
         )
     }
 
@@ -125,9 +136,10 @@ struct InstallSheet: View {
                     .foregroundColor(.secondary)
                     .identifierText()
                 if !session.methodDescription.isEmpty {
-                    Text(session.methodDescription)
+                    Label(session.methodDescription, systemImage: "point.3.connected.trianglepath.dotted")
                         .font(.caption2.weight(.medium))
                         .foregroundColor(accent)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer()
@@ -138,7 +150,7 @@ struct InstallSheet: View {
     private var statusIcon: some View {
         ZStack {
             switch session.phase {
-            case .installing:
+            case .installing, .installed:
                 AnimatedResultIcon(result: .success, size: 120)
                     .transition(.scale.combined(with: .opacity))
             case .failed:
@@ -158,7 +170,7 @@ struct InstallSheet: View {
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
                         .overlay(Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
                         .frame(width: 120, height: 120)
-                    Image(systemName: currentStage == .prompt ? "hand.tap.fill" : "server.rack")
+                    Image(systemName: isStalled ? "exclamationmark.triangle.fill" : (currentStage == .prompt ? "hand.tap.fill" : "server.rack"))
                         .font(.system(size: 44, weight: .semibold))
                         .accentGradientForeground(gradient)
                         .symbolReplace()
@@ -179,9 +191,21 @@ struct InstallSheet: View {
                 .multilineTextAlignment(.center)
             Text(subheadline)
                 .font(.subheadline)
-                .foregroundColor(failure == nil ? .secondary : Theme.danger)
+                .foregroundColor(failure != nil ? Theme.danger : (isStalled ? Theme.warning : .secondary))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+            if let hint = session.installHint {
+                Label(hint, systemImage: session.installHintIsWarning ? "exclamationmark.triangle.fill" : "info.circle")
+                    .font(.footnote)
+                    .foregroundColor(session.installHintIsWarning ? Theme.warning : .secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(Space.x3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                        .fill((session.installHintIsWarning ? Theme.warning : Color.primary).opacity(0.08)))
+                    .transition(.opacity)
+            }
         }
         .accessibilityElement(children: .combine)
     }
@@ -190,8 +214,11 @@ struct InstallSheet: View {
         switch session.phase {
         case .idle, .preparing: return "Preparing…"
         case .waitingForPrompt, .manifestSent: return "Tap “Install” on the prompt"
+        case .stalled(.noManifest): return "iOS hasn't asked for the app yet"
+        case .stalled(.noPayload): return "Waiting for iOS to download the app"
         case .downloading: return "Sending to iOS…"
         case .installing: return "Installing"
+        case .installed: return "Installed"
         case .failed: return "Install failed"
         }
     }
@@ -201,10 +228,20 @@ struct InstallSheet: View {
         case .idle, .preparing: return "Starting the local install server."
         case .waitingForPrompt: return "iOS will ask whether to install \(app.name). Stay in CertSigner until the transfer finishes."
         case .manifestSent: return "iOS read the install manifest. Confirm the prompt to continue."
+        case .stalled(.noManifest):
+            return "The install prompt may have been dismissed, or iOS couldn't reach CertSigner's local server. Reopen the prompt, or try again."
+        case .stalled(.noPayload):
+            return "If you tapped Cancel, reopen the prompt. If iOS showed an error, try again or switch the install method in Settings → Install. Keep CertSigner open."
         case .downloading(let progress): return "\(Int(progress * 100))% of \(app.size.byteString). Keep CertSigner open."
         case .installing: return "Go to your Home Screen to watch \(app.name) install. If iOS says “Unable to Install”, see the tips in Settings → Install."
+        case .installed: return "\(app.name) is on your Home Screen."
         case .failed(let message): return message
         }
+    }
+
+    private var isStalled: Bool {
+        if case .stalled = session.phase { return true }
+        return false
     }
 
     private var stages: some View {
@@ -236,10 +273,12 @@ struct InstallSheet: View {
 
     @ViewBuilder
     private func stageIcon(_ stage: Stage) -> some View {
-        if session.phase == .installing || (currentStage.map { stage.rawValue < $0.rawValue } ?? false) {
+        if session.phase.isSuccess || (currentStage.map { stage.rawValue < $0.rawValue } ?? false) {
             Image(systemName: "checkmark.circle.fill").font(.title3).foregroundColor(Theme.success)
         } else if failure != nil {
             Image(systemName: "minus.circle").font(.title3).foregroundColor(.secondary)
+        } else if stage == currentStage && isStalled {
+            Image(systemName: "exclamationmark.circle.fill").font(.title3).foregroundColor(Theme.warning)
         } else if stage == currentStage {
             Image(systemName: "circle.dotted").font(.title3.weight(.semibold)).foregroundColor(accent)
         } else {
@@ -289,10 +328,29 @@ struct InstallSheet: View {
 
     @ViewBuilder
     private var actions: some View {
-        if failure != nil {
+        if isStalled {
+            VStack(spacing: Space.x3) {
+                PrimaryButton(title: "Reopen Prompt", systemImage: "hand.tap") {
+                    session.reopenPrompt()
+                }
+                PrimaryButton(title: "Try Again", systemImage: "arrow.clockwise", style: .tinted) {
+                    Task { await begin() }
+                }
+            }
+        } else if failure != nil {
             VStack(spacing: Space.x3) {
                 PrimaryButton(title: "Try Again", systemImage: "arrow.clockwise") {
                     Task { await begin() }
+                }
+                if let logURL = session.logFileURL() {
+                    ShareLink(item: logURL) {
+                        Label("Share Install Log", systemImage: "square.and.arrow.up")
+                            .font(.body.weight(.semibold))
+                            .frame(maxWidth: .infinity, minHeight: 22)
+                            .padding(.vertical, Space.x3 + 2)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
                 }
                 PrimaryButton(title: "Install Settings", systemImage: "gearshape", style: .tinted) {
                     session.cancel()
@@ -300,7 +358,7 @@ struct InstallSheet: View {
                     dismiss()
                 }
             }
-        } else if session.phase == .installing {
+        } else if session.phase.isSuccess {
             PrimaryButton(title: "Done", systemImage: "checkmark") {
                 dismiss()
             }

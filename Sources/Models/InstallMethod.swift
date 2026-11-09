@@ -75,6 +75,26 @@ enum InstallManifest {
         return components?.url
     }
 
+    /// Asks api.palera.in for a manifest (with a dummy package URL) to check that Semi-Local's
+    /// manifest service is reachable and answering. Returns nil when it works, else the reason.
+    static func checkManifestService(timeout: TimeInterval = 8) async -> String? {
+        guard let probePackage = URL(string: "http://127.0.0.1:1/probe/app.ipa"),
+              let url = paleraManifestURL(packageURL: probePackage, bundleID: "com.certsigner.probe",
+                                          version: "1.0", title: "Probe") else { return "bad request" }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+        request.httpMethod = "GET"
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                return "HTTP \(http.statusCode)"
+            }
+            let body = String(decoding: data.prefix(4096), as: UTF8.self)
+            return body.contains("<plist") || body.contains("items") ? nil : "it didn't return a manifest"
+        } catch {
+            return RepositoryStore.reason(for: error)
+        }
+    }
+
     static func itmsURL(manifestURL: URL) -> URL? {
         guard let encoded = manifestURL.absoluteString.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return nil }
         return URL(string: "itms-services://?action=download-manifest&url=\(encoded)")
