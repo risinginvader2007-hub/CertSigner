@@ -221,7 +221,7 @@ struct AuroraBackground: View {
 
     var body: some View {
         // Bright, glowing lights: dimmer screens (intensity < 1) still keep most of the glow.
-        let strength = (scheme == .dark ? 0.62 : 0.30) * (0.55 + 0.45 * intensity)
+        let strength = (scheme == .dark ? 0.85 : 0.36) * (0.55 + 0.45 * intensity)
         // Low Power Mode: same motion at 15 fps (the drift is slow, so it still looks smooth).
         TimelineView(.animation(minimumInterval: power.lowPower ? 1.0 / 15 : 1.0 / 60, paused: !animating)) { context in
             let time = AuroraClock.shared.time(at: context.date)
