@@ -32,6 +32,34 @@ struct SigningInput: Sendable {
     let options: SigningOptions
     let appIDPattern: String
     let outputURL: URL
+    /// For the signing log.
+    var certificateName: String = ""
+    var certificateExpiry: Date? = nil
+}
+
+/// Persisted signing logs: Documents/Logs/Signing/<signed app id>.log (failures: failed-<date>.log).
+enum SigningLogStore {
+    static var folder: URL {
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Logs", isDirectory: true)
+            .appendingPathComponent("Signing", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    static func url(forSignedApp id: UUID) -> URL {
+        folder.appendingPathComponent("\(id.uuidString).log")
+    }
+
+    /// A shareable copy with a readable name, e.g. "Husk-signing-log.txt".
+    static func shareableCopy(of url: URL, appName: String) -> URL? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let safe = appName.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>")).joined()
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(safe.isEmpty ? "App" : safe)-signing-log.txt")
+        try? FileManager.default.removeItem(at: destination)
+        return (try? FileManager.default.copyItem(at: url, to: destination)) != nil ? destination : nil
+    }
 }
 
 struct SigningOutput: Sendable {
@@ -85,17 +113,52 @@ enum SigningWorker {
 
         // 2. Patching (30 – 40%)
         emit(.step(.patching))
-        let summary = try AppBundlePatcher.apply(input.options, to: appURL) { log($0) }
-        let nested = AppBundlePatcher.nestedBundleIDs(in: appURL)
-        let mismatched = nested.filter { !SigningValidator.bundleID($0, matches: input.appIDPattern) }
-        if !mismatched.isEmpty {
-            throw SigningError.extensionMismatch(mismatched, input.appIDPattern)
+        let mode = input.options.effectiveMode
+        var options = input.options
+        if mode == .compatibility {
+            // Compatibility: original bundle ID (no override reaches zsign or Info.plist), keep every extension.
+            options.bundleID = ""
+            options.removeExtensions = false
+        }
+        log("Signing mode: \(mode.title)")
+        let summary = try AppBundlePatcher.apply(options, to: appURL) { log($0) }
+        if mode == .strict {
+            let nested = AppBundlePatcher.nestedBundleIDs(in: appURL)
+            let mismatched = nested.filter { !SigningValidator.bundleID($0, matches: input.appIDPattern) }
+            if !mismatched.isEmpty {
+                throw SigningError.extensionMismatch(mismatched, input.appIDPattern)
+            }
         }
         let embedded = appURL.appendingPathComponent("embedded.mobileprovision")
         try? fm.removeItem(at: embedded)
         try? fm.copyItem(at: input.profileURL, to: embedded)
         log("Replaced embedded.mobileprovision")
         log("Entitlements: taken from the provisioning profile")
+
+        // Signing summary for the log.
+        func dateText(_ date: Date?) -> String { date.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "unknown" }
+        log("— Signing summary —")
+        log("Certificate: \(input.certificateName.isEmpty ? "unknown" : input.certificateName), expires \(dateText(input.certificateExpiry))")
+        if let profile = try? ProfileParser.parse(url: input.profileURL) {
+            log("Profile: \(profile.name), expires \(dateText(profile.expirationDate))")
+            if profile.provisionsAllDevices {
+                log("Devices: not device-limited (all devices)")
+            } else {
+                log("Devices: device-limited, \(profile.devices.count) UDID\(profile.devices.count == 1 ? "" : "s") listed")
+            }
+            log("Profile App ID: \(profile.applicationIdentifier.isEmpty ? "(missing)" : profile.applicationIdentifier)")
+            if let value = profile.entitlements["get-task-allow"] {
+                log("get-task-allow: present (\(ProfileParser.describe(value)))")
+            } else {
+                log("get-task-allow: not present")
+            }
+        } else {
+            log("Profile: couldn't be read for the summary", error: true)
+        }
+        log("Bundle ID used: \(summary.bundleID)")
+        let items = AppBundlePatcher.signableItems(in: appURL)
+        log("Items to sign (\(items.count)):")
+        for item in items { log("  \(item.description)") }
         throttle.report(0.40)
 
         // 3. Signing (40 – 85%): zsign signs nested frameworks/dylibs/appex first, main binary last.
@@ -122,6 +185,8 @@ enum SigningWorker {
         } catch {
             throw SigningError.sign(error.localizedDescription)
         }
+        log("Signed \(items.count) item\(items.count == 1 ? "" : "s"):")
+        for item in items { log("  ✓ \(item.description)") }
         throttle.report(0.85)
 
         // 4. Packaging (85 – 100%)
@@ -160,6 +225,8 @@ final class SigningJob: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var signedApp: SignedApp?
     @Published private(set) var isRunning = false
+    /// The saved signing log once the job finished (success or failure).
+    @Published private(set) var logFileURL: URL?
 
     func reset() {
         step = nil
@@ -168,6 +235,7 @@ final class SigningJob: ObservableObject {
         result = nil
         errorMessage = nil
         signedApp = nil
+        logFileURL = nil
     }
 
     func run(
@@ -196,7 +264,9 @@ final class SigningJob: ObservableObject {
             password: password,
             options: options,
             appIDPattern: certificate.profile?.bundleIDPattern ?? "*",
-            outputURL: folder.appendingPathComponent(fileName)
+            outputURL: folder.appendingPathComponent(fileName),
+            certificateName: certificate.record.signingCertificate?.commonName.map { "\($0) (\(certificate.nickname))" } ?? certificate.nickname,
+            certificateExpiry: certificate.record.signingCertificate?.notAfter ?? certificate.expirationDate
         )
 
         var continuation: AsyncStream<SigningEvent>.Continuation?
@@ -237,6 +307,7 @@ final class SigningJob: ObservableObject {
             progress = 1
             result = .success
             Haptics.success()
+            saveLog(app: app, to: SigningLogStore.url(forSignedApp: signedID))
         } catch {
             store.discard(signedID)
             let message = error.localizedDescription
@@ -244,6 +315,18 @@ final class SigningJob: ObservableObject {
             errorMessage = message
             result = .failure
             Haptics.error()
+            let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+            saveLog(app: app, to: SigningLogStore.folder.appendingPathComponent("failed-\(stamp).log"))
+        }
+    }
+
+    private func saveLog(app: LibraryApp, to url: URL) {
+        var text = "CertSigner signing log\nApp: \(app.name) (\(app.bundleID)) v\(app.version)\n"
+        text += "Date: \(Date().formatted(date: .abbreviated, time: .standard))\n"
+        text += "Result: \(result == .success ? "success" : "failed")\n\n"
+        text += log.map { ($0.isError ? "[error] " : "") + $0.text }.joined(separator: "\n") + "\n"
+        if (try? Data(text.utf8).write(to: url, options: .atomic)) != nil {
+            logFileURL = url
         }
     }
 }

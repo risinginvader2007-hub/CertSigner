@@ -28,6 +28,7 @@ enum SigningValidator {
         extensionIDs: [String],
         removeExtensions: Bool,
         udid: String,
+        mode: SigningMode = .strict,
         now: Date = Date()
     ) -> [PreSignCheck] {
         guard let certificate, let profile = certificate.profile else {
@@ -56,6 +57,12 @@ enum SigningValidator {
         }
 
         let pattern = profile.bundleIDPattern
+        if mode == .compatibility {
+            // No App ID matching in Compatibility: just a neutral note.
+            result.append(PreSignCheck(id: "bundle", title: "Bundle ID", detail: "Keeps the original bundle ID (\(originalBundleID))", state: .pass))
+            appendDeviceCheck(to: &result, profile: profile, udid: udid)
+            return result
+        }
         var bundleOK = isValidBundleID(bundleID) && self.bundleID(bundleID, matches: pattern)
         var bundleDetail = bundleOK ? "\(bundleID) fits \(pattern)" : "\(bundleID) doesn't fit \(pattern)"
         if bundleOK && !removeExtensions && !extensionIDs.isEmpty {
@@ -66,7 +73,11 @@ enum SigningValidator {
             }
         }
         result.append(PreSignCheck(id: "bundle", title: "Bundle ID allowed", detail: bundleDetail, state: bundleOK ? .pass : .fail))
+        appendDeviceCheck(to: &result, profile: profile, udid: udid)
+        return result
+    }
 
+    private static func appendDeviceCheck(to result: inout [PreSignCheck], profile: ProvisioningProfile, udid: String) {
         let trimmed = udid.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty {
             result.append(PreSignCheck(id: "device", title: "This iPhone in profile", detail: "Add your UDID in Settings to check", state: .unknown))
@@ -77,7 +88,6 @@ enum SigningValidator {
         } else {
             result.append(PreSignCheck(id: "device", title: "This iPhone in profile", detail: "UDID not in the profile", state: .fail))
         }
-        return result
     }
 
     /// Matches a bundle ID against a profile App ID pattern ("*", "com.foo.*", or exact).
@@ -109,6 +119,7 @@ enum SigningValidator {
         extensionIDs: [String],
         removeExtensions: Bool,
         udid: String,
+        mode: SigningMode = .strict,
         now: Date = Date()
     ) -> [SigningIssue] {
         var issues: [SigningIssue] = []
@@ -131,13 +142,17 @@ enum SigningValidator {
         }
 
         let pattern = profile.bundleIDPattern
-        if !isValidBundleID(bundleID) {
+        // Compatibility keeps the original bundle ID: no App ID matching, no mismatch error or warning.
+        let strict = mode == .strict
+        if !strict {
+            // skip the bundle / extension App ID checks below
+        } else if !isValidBundleID(bundleID) {
             issues.append(SigningIssue(severity: .error, message: "“\(bundleID)” isn't a valid bundle ID (letters, digits, dots and hyphens only)."))
         } else if !self.bundleID(bundleID, matches: pattern) {
             issues.append(SigningIssue(severity: .error, message: "Bundle ID \(bundleID) isn't allowed by this profile (App ID: \(pattern)). Set the bundle ID to \(profile.isWildcard ? "something matching \(pattern)" : pattern)."))
         }
 
-        if !removeExtensions && !extensionIDs.isEmpty && isValidBundleID(bundleID) {
+        if strict && !removeExtensions && !extensionIDs.isEmpty && isValidBundleID(bundleID) {
             let finalIDs = extensionIDs.map { AppBundlePatcher.nestedBundleID($0, oldMain: originalBundleID, newMain: bundleID) }
             let rejected = finalIDs.filter { !self.bundleID($0, matches: pattern) }
             if !rejected.isEmpty {

@@ -105,6 +105,44 @@ enum AppBundlePatcher {
         }
     }
 
+    /// Something zsign signs: the main app, extensions, nested apps, frameworks, dylibs.
+    struct SignableItem {
+        enum Kind: String { case app, appex, framework, dylib }
+        let kind: Kind
+        /// Path relative to Payload/ (e.g. "Husk.app/PlugIns/Share.appex").
+        let path: String
+        let bundleID: String?
+
+        var description: String {
+            "\(kind.rawValue.padding(toLength: 9, withPad: " ", startingAt: 0)) \(path)" + (bundleID.map { "  [\($0)]" } ?? "")
+        }
+    }
+
+    /// Every item in the bundle that gets signed, main app first, in path order.
+    static func signableItems(in appURL: URL) -> [SignableItem] {
+        func bundleID(_ url: URL) -> String? {
+            (try? readPlist(url.appendingPathComponent("Info.plist")))?.0["CFBundleIdentifier"] as? String
+        }
+        let base = appURL.deletingLastPathComponent().path + "/"
+        func relative(_ url: URL) -> String {
+            url.path.hasPrefix(base) ? String(url.path.dropFirst(base.count)) : url.lastPathComponent
+        }
+        var items = [SignableItem(kind: .app, path: appURL.lastPathComponent, bundleID: bundleID(appURL))]
+        guard let enumerator = FileManager.default.enumerator(at: appURL, includingPropertiesForKeys: nil) else { return items }
+        var found: [SignableItem] = []
+        for case let url as URL in enumerator {
+            switch url.pathExtension {
+            case "appex": found.append(SignableItem(kind: .appex, path: relative(url), bundleID: bundleID(url)))
+            case "app": found.append(SignableItem(kind: .app, path: relative(url), bundleID: bundleID(url)))
+            case "framework": found.append(SignableItem(kind: .framework, path: relative(url), bundleID: bundleID(url)))
+            case "dylib": found.append(SignableItem(kind: .dylib, path: relative(url), bundleID: nil))
+            default: break
+            }
+        }
+        items += found.sorted { $0.path < $1.path }
+        return items
+    }
+
     // MARK: Private
 
     private static func nestedBundles(in appURL: URL) -> [URL] {

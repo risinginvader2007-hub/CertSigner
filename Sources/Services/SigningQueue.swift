@@ -90,7 +90,7 @@ final class SigningQueue: ObservableObject {
     func enqueueResign(_ signed: SignedApp, certificateID: UUID) -> SigningTask {
         let task = SigningTask(
             id: UUID(), name: signed.name, bundleID: signed.bundleID, version: signed.version,
-            source: .signed(signed.id), certificateID: certificateID, options: SigningOptions(),
+            source: .signed(signed.id), certificateID: certificateID, options: SigningOptions(mode: SigningMode.defaultMode),
             replacingSignedID: signed.id, status: .queued, errorMessage: nil, createdAt: Date()
         )
         add(task)

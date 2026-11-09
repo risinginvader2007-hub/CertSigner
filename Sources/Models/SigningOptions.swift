@@ -1,5 +1,35 @@
 import Foundation
 
+/// How a job treats the bundle ID and the profile's App ID.
+enum SigningMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    /// Keep the original bundle ID and every extension / framework / dylib; never block on an
+    /// App ID mismatch (how FlareStore's signer behaves).
+    case compatibility
+    /// Rewrite the bundle ID to fit the profile and enforce the App ID checks.
+    case strict
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .compatibility: return "Compatibility"
+        case .strict: return "Strict"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .compatibility: return "Keeps the original bundle ID and all extensions; signs everything with your certificate."
+        case .strict: return "Rewrites the bundle ID to match the profile and blocks App ID mismatches."
+        }
+    }
+
+    /// The mode chosen in Settings (Compatibility unless changed).
+    static var defaultMode: SigningMode {
+        UserDefaults.standard.string(forKey: SettingsKeys.signingMode).flatMap(SigningMode.init(rawValue:)) ?? .compatibility
+    }
+}
+
 /// Optional edits applied before signing. Empty strings mean "keep the original".
 struct SigningOptions: Equatable, Sendable, Codable {
     var displayName: String = ""
@@ -7,6 +37,10 @@ struct SigningOptions: Equatable, Sendable, Codable {
     var version: String = ""
     var removeExtensions: Bool = false
     var removeWatchApp: Bool = false
+    /// nil = jobs saved before signing modes existed (they ran Strict).
+    var mode: SigningMode? = nil
+
+    var effectiveMode: SigningMode { mode ?? .strict }
 
     var trimmedDisplayName: String { displayName.trimmingCharacters(in: .whitespacesAndNewlines) }
     var trimmedBundleID: String { bundleID.trimmingCharacters(in: .whitespacesAndNewlines) }

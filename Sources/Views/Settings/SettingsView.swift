@@ -12,6 +12,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.installMethod) private var installMethod: InstallMethod = .automatic
     @AppStorage(SettingsKeys.autoInstall) private var autoInstall = false
     @AppStorage(SettingsKeys.autoCloseInstall) private var autoCloseInstall = true
+    @AppStorage(SettingsKeys.signingMode) private var signingMode: SigningMode = .compatibility
     @AppStorage(SettingsKeys.deleteOriginal) private var deleteOriginal = true
     @AppStorage(SettingsKeys.defaultRemoveExtensions) private var defaultRemoveExtensions = false
     @AppStorage(SettingsKeys.defaultKeepBundleID) private var defaultKeepBundleID = false
@@ -100,6 +101,19 @@ struct SettingsView: View {
 
     private var signingSection: some View {
         Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Signing mode", systemImage: "signature")
+                GlassSegmentedControl(
+                    selection: $signingMode,
+                    options: SigningMode.allCases.map { GlassSegmentedControl<SigningMode>.Option(value: $0, title: $0.title) }
+                )
+                .accessibilityLabel("Signing mode")
+                Text(signingMode.detail)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 4)
             Toggle(isOn: $autoInstall) {
                 Label("Install after signing", systemImage: "arrow.down.app")
             }
@@ -115,7 +129,7 @@ struct SettingsView: View {
         } header: {
             Text("Signing")
         } footer: {
-            Text("Defaults pre-fill the review sheet and Quick Sign. Keeping the original bundle ID only works with wildcard profiles.")
+            Text("Applies to every signing job (Quick Sign, Sources, re-sign); the review sheet can override it per app. The bundle-ID and extension defaults apply in Strict mode.")
         }
         .onChange(of: autoInstall) { _ in Haptics.selection() }
         .onChange(of: deleteOriginal) { _ in Haptics.selection() }

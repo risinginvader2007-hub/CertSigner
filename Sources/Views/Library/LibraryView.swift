@@ -586,15 +586,29 @@ struct SigningLogSheet: View {
 
     @EnvironmentObject private var queue: SigningQueue
     @Environment(\.dismiss) private var dismiss
+    /// Kept after the job leaves the queue, so the finished screen can still share the log.
+    @State private var savedLog: URL?
+    @State private var appName = "App"
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     if let job = queue.jobs[taskID] {
-                        ObservedSigningProgress(job: job)
+                        ObservedSigningProgress(job: job, onLogSaved: { savedLog = $0 })
                     } else {
                         EmptyStateView(systemImage: "checkmark.circle", title: "Finished", message: "This job is done. The app is in Signed Apps.")
+                    }
+                    if let savedLog, let shareURL = SigningLogStore.shareableCopy(of: savedLog, appName: appName) {
+                        ShareLink(item: shareURL) {
+                            Label("Share signing log", systemImage: "square.and.arrow.up")
+                                .font(.body.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 22)
+                                .padding(.vertical, 14)
+                        }
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.roundedRectangle(radius: Radius.md))
+                        .transition(.opacity)
                     }
                     if let task = queue.tasks.first(where: { $0.id == taskID }), task.status == .failed {
                         PrimaryButton(title: "Retry", systemImage: "arrow.clockwise") {
@@ -606,6 +620,7 @@ struct SigningLogSheet: View {
             }
             .background(AuroraBackground(intensity: 0.7))
             .navigationTitle(queue.tasks.first(where: { $0.id == taskID })?.name ?? "Signing")
+            .onAppear { appName = queue.tasks.first(where: { $0.id == taskID })?.name ?? appName }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -618,6 +633,7 @@ struct SigningLogSheet: View {
 
 private struct ObservedSigningProgress: View {
     @ObservedObject var job: SigningJob
+    var onLogSaved: (URL) -> Void = { _ in }
 
     var body: some View {
         SigningProgressView(
@@ -627,5 +643,7 @@ private struct ObservedSigningProgress: View {
             result: job.result,
             failureMessage: job.errorMessage
         )
+        .onAppear { if let url = job.logFileURL { onLogSaved(url) } }
+        .onChange(of: job.logFileURL) { url in if let url { onLogSaved(url) } }
     }
 }

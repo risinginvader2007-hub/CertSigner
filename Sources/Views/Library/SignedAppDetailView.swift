@@ -11,6 +11,8 @@ struct SignedAppDetailView: View {
 
     @State private var showInstall = false
     @State private var dissolvingOut = false
+    /// Shareable copy of this app's signing log (apps signed before logs were saved have none).
+    @State private var signingLog: URL?
     @State private var appeared = false
 
     private var app: SignedApp? { signedApps.apps.first { $0.id == appID } }
@@ -26,7 +28,12 @@ struct SignedAppDetailView: View {
         .background(AmbientBackground())
         .navigationTitle(app?.name ?? "App")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { withAnimation(Theme.spring.delay(0.05)) { appeared = true } }
+        .onAppear {
+            withAnimation(Theme.spring.delay(0.05)) { appeared = true }
+            if let app {
+                signingLog = SigningLogStore.shareableCopy(of: SigningLogStore.url(forSignedApp: app.id), appName: app.name)
+            }
+        }
     }
 
     private func content(_ app: SignedApp) -> some View {
@@ -80,6 +87,16 @@ struct SignedAppDetailView: View {
                         }
                         ShareLink(item: signedApps.ipaURL(for: app)) {
                             Label("Share", systemImage: "square.and.arrow.up")
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                        }
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.roundedRectangle(radius: 16))
+                    }
+                    if let signingLog {
+                        ShareLink(item: signingLog) {
+                            Label("Share signing log", systemImage: "doc.text")
                                 .fontWeight(.semibold)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)

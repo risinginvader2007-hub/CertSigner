@@ -26,6 +26,8 @@ struct SignAppSheet: View {
     @State private var keepOriginalBundleID = false
     @State private var prefilled = false
     @State private var installAfter = false
+    /// Per-app override of the Settings signing mode.
+    @State private var mode: SigningMode = SigningMode.defaultMode
     /// Passed checks start collapsed; failing / unchecked ones are always open.
     @State private var expandedChecks: Set<String> = []
     /// True once the job is queued (the staged IPA must then be kept).
@@ -37,8 +39,10 @@ struct SignAppSheet: View {
         certificates.certificates.first { $0.id == certificateID }
     }
 
+    private var isCompatibility: Bool { mode == .compatibility }
+
     private var effectiveBundleID: String {
-        if keepOriginalBundleID { return app.bundleID }
+        if isCompatibility || keepOriginalBundleID { return app.bundleID }
         return options.trimmedBundleID.isEmpty ? app.bundleID : options.trimmedBundleID
     }
 
@@ -48,8 +52,9 @@ struct SignAppSheet: View {
             bundleID: effectiveBundleID,
             originalBundleID: app.bundleID,
             extensionIDs: app.extensions,
-            removeExtensions: options.removeExtensions,
-            udid: udid
+            removeExtensions: isCompatibility ? false : options.removeExtensions,
+            udid: udid,
+            mode: mode
         )
     }
 
@@ -59,8 +64,9 @@ struct SignAppSheet: View {
             bundleID: effectiveBundleID,
             originalBundleID: app.bundleID,
             extensionIDs: app.extensions,
-            removeExtensions: options.removeExtensions,
-            udid: udid
+            removeExtensions: isCompatibility ? false : options.removeExtensions,
+            udid: udid,
+            mode: mode
         )
     }
 
@@ -90,6 +96,7 @@ struct SignAppSheet: View {
                 .padding(Theme.padding)
                 .animation(Theme.spring, value: checks)
                 .animation(Theme.spring, value: keepOriginalBundleID)
+                .animation(Theme.spring, value: mode)
             }
             .background(AmbientBackground())
             .scrollDismissesKeyboard(.interactively)
@@ -303,27 +310,57 @@ struct SignAppSheet: View {
 
     private var optionsSection: some View {
         CardSection("Signing Options", systemImage: "slider.horizontal.3") {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Signing mode")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+                GlassSegmentedControl(
+                    selection: $mode,
+                    options: SigningMode.allCases.map { GlassSegmentedControl<SigningMode>.Option(value: $0, title: $0.title) }
+                )
+                .accessibilityLabel("Signing mode")
+                Text(mode.detail)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            SoftDivider()
             labeledField("Display name", placeholder: app.name, text: $options.displayName)
             SoftDivider()
-            Toggle(isOn: $keepOriginalBundleID) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Keep original bundle ID")
-                    Text(app.bundleID).font(.caption).foregroundColor(.secondary).lineLimit(1)
+            if isCompatibility {
+                Label("Keeps the original bundle ID · \(app.bundleID)", systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .transition(.opacity)
+            } else {
+                Toggle(isOn: $keepOriginalBundleID) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Keep original bundle ID")
+                        Text(app.bundleID).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                    }
                 }
-            }
-            if !keepOriginalBundleID {
-                labeledField("Bundle ID", placeholder: app.bundleID, text: $options.bundleID)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                if !keepOriginalBundleID {
+                    labeledField("Bundle ID", placeholder: app.bundleID, text: $options.bundleID)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
             SoftDivider()
             labeledField("Version", placeholder: app.version, text: $options.version)
             if !app.extensions.isEmpty {
                 SoftDivider()
-                Toggle(isOn: $options.removeExtensions) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Remove app extensions")
-                        Text("\(app.extensions.count) found (widgets, share extensions…)")
-                            .font(.caption).foregroundColor(.secondary)
+                if isCompatibility {
+                    Label("Keeps all \(app.extensions.count) app extension\(app.extensions.count == 1 ? "" : "s") and signs each one",
+                          systemImage: "puzzlepiece.extension")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Toggle(isOn: $options.removeExtensions) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Remove app extensions")
+                            Text("\(app.extensions.count) found (widgets, share extensions…)")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
                     }
                 }
             }
@@ -383,6 +420,7 @@ struct SignAppSheet: View {
 
     private func prefill() {
         guard !prefilled else { return }
+        mode = SigningMode.defaultMode
         certificateID = certificates.activeID ?? certificates.certificates.first?.id
         options.removeExtensions = SettingsKeys.bool(SettingsKeys.defaultRemoveExtensions, default: false) && !app.extensions.isEmpty
         let keep = SettingsKeys.bool(SettingsKeys.defaultKeepBundleID, default: false)
@@ -400,6 +438,12 @@ struct SignAppSheet: View {
         }
         var finalOptions = options
         if keepOriginalBundleID || finalOptions.trimmedBundleID == app.bundleID { finalOptions.bundleID = "" }
+        finalOptions.mode = mode
+        if mode == .compatibility {
+            // No bundle ID override and every extension kept (the worker enforces this too).
+            finalOptions.bundleID = ""
+            finalOptions.removeExtensions = false
+        }
         started = true
         queue.enqueue(app: app, certificateID: certificate.id, options: finalOptions, installWhenDone: installAfter)
         Haptics.impact(.medium)
