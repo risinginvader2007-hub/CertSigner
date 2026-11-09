@@ -97,7 +97,7 @@ struct HomeView: View {
     // MARK: Stats
 
     private var stats: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Space.x3) {
             StatTile(value: "\(certificates.certificates.count)", label: "Certificates", systemImage: "checkmark.seal.fill", tint: accent)
             StatTile(value: "\(signedApps.apps.count)", label: "Signed apps", systemImage: "signature", tint: .purple)
             StatTile(
@@ -117,7 +117,7 @@ struct HomeView: View {
             Haptics.impact(.medium)
             withAnimation(Theme.spring) { router.tab = .library }
         } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: Space.x4) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.title2)
                     .foregroundColor(.white)
@@ -126,7 +126,7 @@ struct HomeView: View {
                     .background(Circle().fill(LinearGradient(colors: [Theme.warning, Theme.danger.opacity(0.85)],
                                                              startPoint: .topLeading, endPoint: .bottomTrailing)))
                     .shadow(color: Theme.warning.opacity(attentionGlow ? 0.6 : 0.2), radius: attentionGlow ? 12 : 4)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.hair) {
                     Text("Needs attention")
                         .font(.headline)
                         .foregroundColor(.primary)
@@ -170,7 +170,7 @@ struct HomeView: View {
 
     private func importingCard(_ transfer: TransferState) -> some View {
         Card {
-            HStack(spacing: 12) {
+            HStack(spacing: Space.x3) {
                 ProgressView()
                 Text(transfer.title)
                     .font(.subheadline.weight(.semibold))
@@ -186,7 +186,7 @@ struct HomeView: View {
             quickSignPick = false
             showPicker = true
         } label: {
-            VStack(spacing: 12) {
+            VStack(spacing: Space.x3) {
                 ZStack {
                     Circle()
                         .fill(RadialGradient(colors: [accent.opacity(dropTargeted ? 0.45 : 0.25), .clear],
@@ -214,7 +214,7 @@ struct HomeView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 28)
+            .padding(.vertical, Space.x6)
             .padding(.horizontal, Theme.padding)
             .background(
                 RoundedRectangle(cornerRadius: Theme.corner + 4, style: .continuous)
@@ -248,7 +248,7 @@ struct HomeView: View {
             quickSignPick = true
             showPicker = true
         } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: Space.x4) {
                 Image(systemName: "bolt.fill")
                     .font(.title3.weight(.semibold))
                     .foregroundColor(.white)
@@ -258,7 +258,7 @@ struct HomeView: View {
                             .fill(LinearGradient(colors: [.orange, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
                     )
                     .ambientGlow(.pink, radius: 10, opacity: 0.4)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.hair) {
                     Text("Quick Sign")
                         .font(.headline)
                         .foregroundColor(.primary)
@@ -285,10 +285,10 @@ struct HomeView: View {
     private var certificateCard: some View {
         if let active = certificates.active {
             Card {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: Space.x4) {
+                    HStack(spacing: Space.x3) {
                         CertificateGlyph(seed: active.nickname, size: 46)
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: Space.x1) {
                             Text("ACTIVE CERTIFICATE")
                                 .font(.caption2.weight(.bold))
                                 .foregroundColor(.secondary)
@@ -315,7 +315,7 @@ struct HomeView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    HStack(spacing: 10) {
+                    HStack(spacing: Space.x3) {
                         if certificates.certificates.count > 1 {
                             // A plain button + bottom sheet (a system Menu blurred the pill and
                             // left a square snapshot behind when it closed).
@@ -325,8 +325,8 @@ struct HomeView: View {
                                 Label("Switch", systemImage: "arrow.left.arrow.right")
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundColor(accent)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 9)
+                                    .padding(.horizontal, Space.x4)
+                                    .padding(.vertical, Space.x2)
                                     .accentPillBackground(accent)
                                     .glassShine(in: Capsule())
                                     .clipShape(Capsule())
@@ -339,8 +339,8 @@ struct HomeView: View {
                             Label("Manage", systemImage: "slider.horizontal.3")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundColor(accent)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 9)
+                                .padding(.horizontal, Space.x4)
+                                .padding(.vertical, Space.x2)
                                 .accentPillBackground(accent)
                                 .glassShine(in: Capsule())
                                 .clipShape(Capsule())
@@ -354,11 +354,11 @@ struct HomeView: View {
             .glassShine(cornerRadius: Theme.corner)
         } else {
             Card {
-                HStack(spacing: 14) {
+                HStack(spacing: Space.x4) {
                     Image(systemName: "checkmark.seal")
                         .font(.title2)
                         .foregroundColor(accent)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: Space.hair) {
                         Text("No certificate yet").font(.headline)
                         Text("Import your .p12 and profile to start signing.")
                             .font(.caption)

@@ -10,7 +10,7 @@ struct StatusBadge: View {
     @Environment(\.themeAccent) private var accent
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Space.x1) {
             if let systemImage {
                 Image(systemName: systemImage)
             }
@@ -19,8 +19,8 @@ struct StatusBadge: View {
         }
         .font(.caption.weight(.semibold))
         .monospacedDigit()
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
+        .padding(.horizontal, Space.x2)
+        .padding(.vertical, Space.x1)
         .foregroundColor(color)
         .background(Capsule().fill(color.opacity(0.14)))
         .overlay(Capsule().strokeBorder(color.opacity(0.28), lineWidth: 0.75))

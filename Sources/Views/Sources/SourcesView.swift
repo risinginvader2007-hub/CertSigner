@@ -37,16 +37,16 @@ struct SourcesView: View {
                         NavigationLink {
                             AllSourceAppsView()
                         } label: {
-                            HStack(spacing: 12) {
+                            HStack(spacing: Space.x3) {
                                 Image(systemName: "square.grid.2x2.fill")
                                     .font(.body.weight(.semibold))
                                     .foregroundColor(.white)
                                     .frame(width: 40, height: 40)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
                                             .fill(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
                                     )
-                                VStack(alignment: .leading, spacing: 2) {
+                                VStack(alignment: .leading, spacing: Space.hair) {
                                     Text("All Apps").font(.body.weight(.semibold))
                                     Text("\(store.allApps.count) from \(store.repositories.count) source\(store.repositories.count == 1 ? "" : "s")")
                                         .font(.caption).foregroundColor(.secondary)
@@ -142,9 +142,9 @@ struct RepositoryRow: View {
     var onRetry: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Space.x3) {
             RemoteIcon(url: repo.iconURL, name: repo.name, size: 44)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.hair) {
                 Text(repo.name).font(.body.weight(.semibold)).lineLimit(1)
                 // Cached apps stay listed while refreshing; only real failures show a warning.
                 Text(detail).font(.caption).foregroundColor(.secondary).lineLimit(1)
@@ -165,7 +165,7 @@ struct RepositoryRow: View {
                     .buttonStyle(.borderless)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, Space.hair)
     }
 
     private var detail: String {
@@ -200,7 +200,7 @@ struct AddSourceSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 18) {
+                VStack(spacing: Space.x4) {
                     CardSection("Source URL", systemImage: "link") {
                         TextField("https://example.com/source.json", text: $text)
                             .keyboardType(.URL)
@@ -223,7 +223,7 @@ struct AddSourceSheet: View {
                     .shake(shakes)
 
                     if let error {
-                        HStack(alignment: .top, spacing: 10) {
+                        HStack(alignment: .top, spacing: Space.x3) {
                             Image(systemName: "xmark.octagon.fill").foregroundColor(Theme.danger)
                             Text(error).font(.footnote).fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 0)
@@ -337,10 +337,10 @@ struct RepositoryView: View {
     }
 
     private func header(_ repo: Repository) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: Space.x3) {
+            HStack(spacing: Space.x4) {
                 RemoteIcon(url: repo.iconURL, name: repo.name, size: 60)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Space.x1) {
                     Text(repo.name).font(.title3.weight(.bold)).lineLimit(2)
                     Text(repo.url.host ?? repo.url.absoluteString)
                         .font(.caption).foregroundColor(.secondary).lineLimit(1)
@@ -352,7 +352,7 @@ struct RepositoryView: View {
                 Text(subtitle).font(.subheadline).foregroundColor(.secondary).lineLimit(4)
             }
             if let error = repo.lastError, !store.refreshing.contains(repo.id) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: Space.x2) {
                     Label("Last refresh failed: \(error)", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundColor(Theme.warning)
@@ -368,7 +368,7 @@ struct RepositoryView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            HStack(spacing: 8) {
+            HStack(spacing: Space.x2) {
                 StatusBadge(text: "\(repo.apps.count) apps", systemImage: "square.grid.2x2", kind: .info)
                 if let website = repo.website {
                     Link(destination: website) {
@@ -377,7 +377,7 @@ struct RepositoryView: View {
                 }
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, Space.x2)
     }
 }
 
@@ -443,9 +443,9 @@ struct SourceAppRow: View {
     var showsSource = false
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Space.x3) {
             RemoteIcon(url: app.iconURL, name: app.name, size: 52)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.hair) {
                 Text(app.name).font(.body.weight(.semibold)).lineLimit(1)
                 Text(secondLine).font(.caption).foregroundColor(.secondary).lineLimit(1)
                 Text(thirdLine).font(.caption2).foregroundColor(.secondary).lineLimit(1)
@@ -453,7 +453,7 @@ struct SourceAppRow: View {
             Spacer(minLength: 8)
             GetButton(repo: repo, app: app)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, Space.hair)
     }
 
     private var secondLine: String {

@@ -63,9 +63,9 @@ struct SearchView: View {
                         Section("Signed Apps") {
                             ForEach(apps) { app in
                                 NavigationLink(value: Route.app(app.id)) {
-                                    HStack(spacing: 12) {
+                                    HStack(spacing: Space.x3) {
                                         AppIconView(image: signedApps.icons[app.id], name: app.name, size: 40)
-                                        VStack(alignment: .leading, spacing: 2) {
+                                        VStack(alignment: .leading, spacing: Space.hair) {
                                             Text(app.name).font(.body.weight(.semibold))
                                             Text(app.bundleID).font(.caption).foregroundColor(.secondary).identifierText()
                                         }
@@ -89,9 +89,9 @@ struct SearchView: View {
                         Section("Certificates") {
                             ForEach(matchingCertificates) { certificate in
                                 NavigationLink(value: Route.certificate(certificate.id)) {
-                                    HStack(spacing: 12) {
+                                    HStack(spacing: Space.x3) {
                                         CertificateGlyph(seed: certificate.nickname, size: 36)
-                                        VStack(alignment: .leading, spacing: 2) {
+                                        VStack(alignment: .leading, spacing: Space.hair) {
                                             Text(certificate.displayName).font(.body.weight(.semibold)).identifierText(minimumScale: 0.85)
                                             Text(certificate.profile?.teamName ?? "Unknown team")
                                                 .font(.caption).foregroundColor(.secondary)

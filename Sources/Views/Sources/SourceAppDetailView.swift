@@ -22,7 +22,7 @@ struct SourceAppDetailView: View {
         Group {
             if let repo, let app {
                 ScrollView {
-                    VStack(spacing: 18) {
+                    VStack(spacing: Space.x4) {
                         header(app, repo: repo)
                         actions(app, repo: repo)
                         if let notes = app.latest.notes {
@@ -56,7 +56,7 @@ struct SourceAppDetailView: View {
     // MARK: Sections
 
     private func header(_ app: RepoApp, repo: Repository) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Space.x3) {
             RemoteIcon(url: app.iconURL, name: app.name, size: 96)
             Text(app.name)
                 .font(.title2.weight(.bold))
@@ -64,7 +64,7 @@ struct SourceAppDetailView: View {
             if let line = app.subtitle ?? app.developer {
                 Text(line).font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center)
             }
-            HStack(spacing: 8) {
+            HStack(spacing: Space.x2) {
                 StatusBadge(text: "v\(app.latest.version)", kind: .info)
                 if let size = app.latest.size {
                     StatusBadge(text: size.byteString, systemImage: "internaldrive", kind: .neutral)
@@ -75,14 +75,14 @@ struct SourceAppDetailView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        .padding(.vertical, Space.x2)
     }
 
     @ViewBuilder
     private func actions(_ app: RepoApp, repo: Repository) -> some View {
         if let download = store.download(repoID: repo.id, app: app) {
             Card {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Space.x3) {
                     HStack {
                         Text(download.importing ? "Importing…" : "Downloading…")
                             .font(.subheadline.weight(.semibold))
@@ -113,7 +113,7 @@ struct SourceAppDetailView: View {
             }
             .transition(.opacity)
         } else {
-            VStack(spacing: 10) {
+            VStack(spacing: Space.x3) {
                 PrimaryButton(title: "Get", systemImage: "arrow.down.app.fill") {
                     get(app, version: nil, repo: repo, signAndInstall: true)
                 }
@@ -145,13 +145,13 @@ struct SourceAppDetailView: View {
     }
 
     private func screenshots(_ urls: [URL]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.x2) {
             Text("SCREENSHOTS")
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.secondary)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, Space.x1)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                HStack(spacing: Space.x3) {
                     ForEach(urls, id: \.self) { url in
                         AsyncImage(url: url) { phase in
                             if let image = phase.image {
@@ -163,11 +163,11 @@ struct SourceAppDetailView: View {
                             }
                         }
                         .frame(height: 360)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 1))
                     }
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, Space.x1)
             }
         }
     }
@@ -177,9 +177,9 @@ struct SourceAppDetailView: View {
         let busy = store.download(repoID: repo.id, app: app) != nil
         return CardSection("Versions", systemImage: "clock.arrow.circlepath") {
             ForEach(visible) { version in
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
+                HStack(spacing: Space.x3) {
+                    VStack(alignment: .leading, spacing: Space.hair) {
+                        HStack(spacing: Space.x2) {
                             Text(version.version).font(.subheadline.weight(.semibold))
                             if version.id == app.latest.id {
                                 StatusBadge(text: "Latest", kind: .success)

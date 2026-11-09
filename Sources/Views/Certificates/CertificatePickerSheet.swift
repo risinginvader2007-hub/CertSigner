@@ -118,7 +118,7 @@ struct CertificatePickerSheet: View {
         } label: {
             HStack(spacing: Space.x3) {
                 CertificateGlyph(seed: certificate.nickname, size: 38)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.hair) {
                     Text(certificate.displayName)
                         .font(.body.weight(.semibold))
                         .foregroundColor(.primary)

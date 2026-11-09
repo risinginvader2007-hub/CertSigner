@@ -24,11 +24,11 @@ struct IntroOverlay: View {
                         .fill(RadialGradient(colors: [accent.opacity(0.55), .clear], center: .center, startRadius: 10, endRadius: 120))
                         .frame(width: 240, height: 240)
                         .scaleEffect(stage >= 1 ? 1 : 0.4)
-                    RoundedRectangle(cornerRadius: 30, style: .continuous)
+                    RoundedRectangle(cornerRadius: Radius.xl, style: .continuous)
                         .fill(LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous)
+                        .overlay(RoundedRectangle(cornerRadius: Radius.xl, style: .continuous)
                             .fill(LinearGradient(colors: [Color.white.opacity(0.35), .clear], startPoint: .top, endPoint: .center)))
-                        .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).strokeBorder(Color.white.opacity(0.3), lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: Radius.xl, style: .continuous).strokeBorder(Color.white.opacity(0.3), lineWidth: 1))
                         .frame(width: 112, height: 112)
                         .shadow(color: accent.opacity(0.6), radius: 30, y: 10)
                     Image(systemName: "signature")
@@ -39,7 +39,7 @@ struct IntroOverlay: View {
                 .scaleEffect(reduceMotion ? 1 : (stage >= 1 ? 1 : 0.6))
                 .opacity(stage >= 1 ? 1 : 0)
 
-                VStack(spacing: 6) {
+                VStack(spacing: Space.x2) {
                     Text("CertSigner")
                         .font(.system(size: 36, weight: .bold, design: .rounded))
                         .displayTracking()

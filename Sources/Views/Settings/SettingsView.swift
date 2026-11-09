@@ -60,9 +60,9 @@ struct SettingsView: View {
             NavigationLink {
                 CertificatesView()
             } label: {
-                HStack(spacing: 12) {
+                HStack(spacing: Space.x3) {
                     CertificateGlyph(seed: certificates.active?.nickname ?? "none", size: 34)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: Space.hair) {
                         Text(certificates.active?.displayName ?? "No active certificate")
                             .font(.body.weight(.semibold))
                             .identifierText(minimumScale: 0.85)
@@ -118,7 +118,7 @@ struct SettingsView: View {
 
     private var signingSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Space.x2) {
                 Label("Signing mode", systemImage: "signature")
                 SlidingSegmentedControl(
                     selection: $signingMode,
@@ -130,7 +130,7 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, Space.x1)
             Toggle(isOn: $autoInstall) {
                 Label("Install after signing", systemImage: "arrow.down.app")
             }
@@ -205,14 +205,14 @@ struct SettingsView: View {
             )
             .padding(.vertical, Space.x1)
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: Space.x3) {
                 Text("Accent colour")
                 AccentPicker(selection: $accent)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, Space.x1)
 
             Toggle(isOn: $backgroundAnimation) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.hair) {
                     Text("Background animation")
                     Text("Slowly drifting colour glows behind every screen. Pauses automatically with Reduce Motion; runs at a lower frame rate in Low Power Mode.")
                         .font(.caption)
@@ -220,11 +220,11 @@ struct SettingsView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: Space.x3) {
                 Text("App icon")
                 AppIconPicker()
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, Space.x1)
         }
     }
 
@@ -242,7 +242,7 @@ struct SettingsView: View {
                 }
             } else {
                 StorageBar(items: storage)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, Space.x2)
                 ForEach(storage) { item in
                     HStack {
                         Label(item.title, systemImage: item.systemImage)
@@ -343,7 +343,7 @@ struct SettingsView: View {
                     Label("Source on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
                 }
             }
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: Space.x2) {
                 Text("Built with zsign (MIT), OpenSSL and ZIPFoundation.")
                 Text("CertSigner signs apps with your own certificates for your own devices.")
             }
@@ -360,7 +360,7 @@ struct AccentPicker: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            HStack(spacing: Space.x3) {
                 ForEach(AccentOption.allCases) { option in
                     Button {
                         withAnimation(Theme.bouncy) { selection = option }
@@ -389,7 +389,7 @@ struct AccentPicker: View {
                     .accessibilityAddTraits(selection == option ? .isSelected : [])
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, Space.hair)
         }
     }
 }
@@ -421,18 +421,18 @@ struct AppIconPicker: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Space.x3) {
             // Live preview: the chosen icon as it sits on the Home Screen.
-            HStack(spacing: 14) {
+            HStack(spacing: Space.x4) {
                 Image(currentOption.preview)
                     .resizable()
                     .frame(width: 72, height: 72)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.white.opacity(0.2), lineWidth: 0.75))
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Radius.md, style: .continuous).strokeBorder(Color.white.opacity(0.2), lineWidth: 0.75))
                     .ambientGlow(accent, radius: 14, opacity: 0.35)
                     .id(currentOption.id)
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.hair) {
                     Text("CertSigner").font(.subheadline.weight(.semibold))
                     Text("\(currentOption.title) icon").font(.caption).foregroundColor(.secondary)
                 }
@@ -447,19 +447,19 @@ struct AppIconPicker: View {
 
     private var picker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
+            HStack(spacing: Space.x4) {
                 ForEach(options) { option in
                     let selected = current == option.iconName
                     Button {
                         select(option)
                     } label: {
-                        VStack(spacing: 6) {
+                        VStack(spacing: Space.x2) {
                             Image(option.preview)
                                 .resizable()
                                 .frame(width: 58, height: 58)
-                                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
                                         .strokeBorder(LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing),
                                                       lineWidth: selected ? 3 : 0)
                                         .padding(-4)
@@ -469,14 +469,14 @@ struct AppIconPicker: View {
                                 .font(.caption2.weight(selected ? .bold : .regular))
                                 .foregroundColor(selected ? accent : .secondary)
                         }
-                        .padding(4)
+                        .padding(Space.x1)
                     }
                     .buttonStyle(PressableButtonStyle(scale: 0.9))
                     .accessibilityLabel("\(option.title) icon")
                     .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, Space.x1)
             .animation(Theme.bouncy, value: current)
         }
     }
@@ -512,9 +512,9 @@ struct StorageBar: View {
     private var total: Int64 { max(1, items.reduce(0) { $0 + $1.bytes }) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.x2) {
             GeometryReader { geo in
-                HStack(spacing: 2) {
+                HStack(spacing: Space.hair) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         let share = CGFloat(item.bytes) / CGFloat(total)
                         if item.bytes > 0 {
@@ -530,10 +530,10 @@ struct StorageBar: View {
             .background(Capsule().fill(Color.primary.opacity(0.07)))
             .clipShape(Capsule())
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
+                HStack(spacing: Space.x3) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         if item.bytes > 0 {
-                            HStack(spacing: 4) {
+                            HStack(spacing: Space.x1) {
                                 Circle().fill(Self.colors[index % Self.colors.count]).frame(width: 7, height: 7)
                                 Text(item.title).font(.caption2).foregroundColor(.secondary).lineLimit(1)
                             }

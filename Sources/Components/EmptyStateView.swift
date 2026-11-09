@@ -15,7 +15,7 @@ struct EmptyStateView: View {
     @State private var floating = false
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: Space.x4) {
             ZStack {
                 // Soft halo
                 Circle()
@@ -36,7 +36,7 @@ struct EmptyStateView: View {
             .opacity(appeared ? 1 : 0)
             .accessibilityHidden(true)
 
-            VStack(spacing: 8) {
+            VStack(spacing: Space.x2) {
                 Text(title)
                     .font(.title3.weight(.bold))
                     .multilineTextAlignment(.center)
@@ -55,7 +55,7 @@ struct EmptyStateView: View {
                     .opacity(appeared ? 1 : 0)
             }
         }
-        .padding(32)
+        .padding(Space.x8)
         .frame(maxWidth: .infinity)
         .onAppear {
             withAnimation(Motion.adaptive(Motion.bouncy, reduceMotion: reduceMotion).delay(0.05)) { appeared = true }

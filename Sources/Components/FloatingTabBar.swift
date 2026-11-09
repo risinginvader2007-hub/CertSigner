@@ -42,15 +42,15 @@ struct FloatingTabBar: View {
     @Namespace private var namespace
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Space.x1) {
             ForEach(AppTab.barTabs) { tab in
                 item(tab)
             }
         }
-        .padding(6)
+        .padding(Space.x2)
         .glassCapsule()
-        .padding(.horizontal, 32)
-        .padding(.bottom, 4)
+        .padding(.horizontal, Space.x8)
+        .padding(.bottom, Space.x1)
     }
 
     private func item(_ tab: AppTab) -> some View {
@@ -61,7 +61,7 @@ struct FloatingTabBar: View {
             Haptics.selection()
             withAnimation(Motion.snappy) { selection = tab }
         } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: Space.x1) {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: tab.systemImage)
                         .font(.system(size: 19, weight: .semibold))
@@ -72,7 +72,7 @@ struct FloatingTabBar: View {
                         Text("\(badge)")
                             .font(.system(size: 11, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 5)
+                            .padding(.horizontal, Space.x1)
                             .frame(minWidth: 17, minHeight: 17)
                             .background(Capsule().fill(Theme.danger))
                             .offset(x: 10, y: -6)
@@ -84,7 +84,7 @@ struct FloatingTabBar: View {
             }
             .foregroundColor(selected ? accent : .secondary)
             .frame(maxWidth: .infinity, minHeight: 44)
-            .padding(.vertical, 3)
+            .padding(.vertical, Space.hair)
             .background {
                 if selected {
                     // Morphing selection pill: gradient-tinted glass with a lit edge and soft glow.

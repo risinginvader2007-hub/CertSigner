@@ -29,7 +29,7 @@ struct PrimaryButton: View {
             Haptics.impact(.medium)
             action()
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.x2) {
                 if isLoading {
                     ProgressView().tint(foreground)
                 } else if let feedback {
@@ -45,7 +45,7 @@ struct PrimaryButton: View {
             }
             .font(.body)
             .frame(maxWidth: .infinity, minHeight: 22)
-            .padding(.vertical, 15)
+            .padding(.vertical, Space.x4)
             .padding(.horizontal, Space.x4)
             .foregroundColor(foreground)
             .background(background)

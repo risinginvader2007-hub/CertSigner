@@ -54,7 +54,7 @@ struct ImportCertificateView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: Space.x5) {
                     CardSection("Nickname", systemImage: "tag") {
                         TextField("e.g. Personal Dev Cert", text: $nickname)
                             .focused($focused, equals: .nickname)
@@ -119,7 +119,7 @@ struct ImportCertificateView: View {
                             .font(.subheadline.weight(.medium))
                             .foregroundColor(Theme.danger)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 4)
+                            .padding(.horizontal, Space.x1)
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
@@ -284,7 +284,7 @@ struct FilePickRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: Space.x3) {
                 Image(systemName: systemImage)
                     .font(.body.weight(.semibold))
                     .foregroundColor(isDone ? Theme.success : accent)
@@ -294,7 +294,7 @@ struct FilePickRow: View {
                     .overlay(RoundedRectangle(cornerRadius: Radius.xs + 2, style: .continuous)
                         .strokeBorder((isDone ? Theme.success : accent).opacity(0.3), lineWidth: 0.75))
                     .ambientGlow(isDone ? Theme.success : .clear, radius: 8, opacity: 0.4)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.hair) {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(.primary)

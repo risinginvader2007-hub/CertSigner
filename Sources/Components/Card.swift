@@ -76,10 +76,10 @@ struct CardSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.x2) {
             SectionHeader(title, systemImage: systemImage)
 
-            Card { VStack(alignment: .leading, spacing: 12) { content } }
+            Card { VStack(alignment: .leading, spacing: Space.x3) { content } }
         }
     }
 }
@@ -93,7 +93,7 @@ struct InfoRow: View {
     var copyable: Bool = false
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: Space.x3) {
             if let systemImage {
                 Image(systemName: systemImage)
                     .foregroundColor(.secondary)

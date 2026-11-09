@@ -46,7 +46,7 @@ struct ProfileRawDataView: View {
                 Text("None").font(.caption).foregroundColor(.secondary)
             }
             ForEach(profile.fullEntitlements) { item in
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.hair) {
                     Text(item.key)
                         .font(.system(.caption, design: .monospaced).weight(.semibold))
                     Text(item.value)
@@ -62,7 +62,7 @@ struct ProfileRawDataView: View {
     }
 
     private func rawRow(_ label: String, _ value: String, note: String? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Space.hair) {
             Text(label)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.secondary)

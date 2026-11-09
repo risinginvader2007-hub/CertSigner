@@ -243,10 +243,10 @@ struct LibraryView: View {
                     Text("Nothing signed yet. Finished jobs appear here.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, Space.x2)
                         .emptyStateEntrance()
                 } else {
-                    VStack(spacing: 8) {
+                    VStack(spacing: Space.x2) {
                         Image(systemName: "magnifyingglass").font(.title2).foregroundColor(.secondary)
                         Text("No signed apps match your filters.")
                             .font(.subheadline)
@@ -255,7 +255,7 @@ struct LibraryView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, Space.x3)
                 }
             } else {
                 ForEach(apps) { app in
@@ -418,10 +418,10 @@ private struct SigningRowContent: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: Space.x3) {
+            HStack(spacing: Space.x3) {
                 AppIconView(image: icon, name: task.name, size: 46)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Space.x1) {
                     Text(task.name)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
@@ -454,7 +454,7 @@ private struct SigningRowContent: View {
                 }
             }
             if task.status == .running {
-                HStack(spacing: 6) {
+                HStack(spacing: Space.x2) {
                     ForEach(SigningStep.allCases) { candidate in
                         if candidate == step {
                             // Current step: gradient with a moving sheen.
@@ -474,14 +474,14 @@ private struct SigningRowContent: View {
                 .accessibilityHidden(true)
             }
             if failed {
-                HStack(spacing: 10) {
+                HStack(spacing: Space.x3) {
                     Button {
                         queue.retry(task.id)
                     } label: {
                         Label("Retry", systemImage: "arrow.clockwise")
                             .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
+                            .padding(.horizontal, Space.x3)
+                            .padding(.vertical, Space.x2)
                             .background(Capsule().fill(accent.opacity(0.15)))
                     }
                     Button(role: .destructive) {
@@ -489,8 +489,8 @@ private struct SigningRowContent: View {
                     } label: {
                         Label("Remove", systemImage: "trash")
                             .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
+                            .padding(.horizontal, Space.x3)
+                            .padding(.vertical, Space.x2)
                             .background(Capsule().fill(Theme.danger.opacity(0.12)))
                     }
                     Spacer()
@@ -501,7 +501,7 @@ private struct SigningRowContent: View {
                 .buttonStyle(.borderless)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, Space.x1)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(task.name), \(statusText)")
     }
@@ -545,10 +545,10 @@ struct SignedAppListRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: Space.x3) {
+            HStack(spacing: Space.x3) {
                 AppIconView(image: icon, name: app.name, size: 52)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Space.x1) {
                     Text(app.name)
                         .font(.body.weight(.semibold))
                         .lineLimit(1)
@@ -556,7 +556,7 @@ struct SignedAppListRow: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .identifierText()
-                    HStack(spacing: 6) {
+                    HStack(spacing: Space.x2) {
                         CertificateStatusBadge(status: app.status())
                         if let expires = app.expiresAt {
                             Text(expires.expiryCountdown())
@@ -578,7 +578,7 @@ struct SignedAppListRow: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("Shows details")
 
-            HStack(spacing: 8) {
+            HStack(spacing: Space.x2) {
                 Button(action: onInstall) {
                     actionLabel("Install", systemImage: "arrow.down.app.fill", filled: true)
                         .glassShine(in: Capsule())
@@ -593,7 +593,7 @@ struct SignedAppListRow: View {
             }
             .buttonStyle(.borderless)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, Space.x2)
     }
 
     private func actionLabel(_ title: String, systemImage: String, filled: Bool) -> some View {
@@ -601,7 +601,7 @@ struct SignedAppListRow: View {
             .font(.caption.weight(.semibold))
             .lineLimit(1)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
+            .padding(.vertical, Space.x2)
             .foregroundColor(filled ? .white : accent)
             .frame(minHeight: 36)
             .background(
@@ -626,7 +626,7 @@ struct SigningLogSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: Space.x5) {
                     if let job = queue.jobs[taskID] {
                         ObservedSigningProgress(job: job, onLogSaved: { savedLog = $0 })
                     } else {
@@ -637,7 +637,7 @@ struct SigningLogSheet: View {
                             Label("Share signing log", systemImage: "square.and.arrow.up")
                                 .font(.body.weight(.semibold))
                                 .frame(maxWidth: .infinity, minHeight: 22)
-                                .padding(.vertical, 14)
+                                .padding(.vertical, Space.x4)
                         }
                         .buttonStyle(.bordered)
                         .buttonBorderShape(.roundedRectangle(radius: Radius.md))

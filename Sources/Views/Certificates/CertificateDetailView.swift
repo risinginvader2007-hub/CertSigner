@@ -42,7 +42,7 @@ struct CertificateDetailView: View {
     private func content(_ certificate: Certificate) -> some View {
         let isActive = certificate.id == certificates.activeID
         return ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: Space.x5) {
                 header(certificate, isActive: isActive)
                 deviceSection(certificate.profile)
                 if let profile = certificate.profile {
@@ -104,9 +104,9 @@ struct CertificateDetailView: View {
     // MARK: Sections
 
     private func header(_ certificate: Certificate, isActive: Bool) -> some View {
-        VStack(spacing: 14) {
+        VStack(spacing: Space.x4) {
             CertificateGlyph(seed: certificate.nickname, size: 84)
-            VStack(spacing: 4) {
+            VStack(spacing: Space.x1) {
                 Text(certificate.displayName)
                     .font(.title2.weight(.bold))
                     .multilineTextAlignment(.center)
@@ -121,7 +121,7 @@ struct CertificateDetailView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
-            HStack(spacing: 8) {
+            HStack(spacing: Space.x2) {
                 CertificateStatusBadge(status: certificate.status())
                 if let type = certificate.profile?.type {
                     StatusBadge(text: type.rawValue, kind: .neutral)
@@ -145,7 +145,7 @@ struct CertificateDetailView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
+        .padding(.vertical, Space.x5)
         .animation(Theme.bouncy, value: isActive)
     }
 
@@ -153,7 +153,7 @@ struct CertificateDetailView: View {
     private func deviceSection(_ profile: ProvisioningProfile?) -> some View {
         CardSection("This Device", systemImage: "iphone.gen3") {
             if udid.trimmingCharacters(in: .whitespaces).isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: Space.x3) {
                     Text("iOS doesn't let sideloaded apps read the UDID. Add it in Settings to check this profile.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
@@ -171,7 +171,7 @@ struct CertificateDetailView: View {
                         .foregroundColor(Theme.success)
                         .font(.subheadline.weight(.medium))
                 } else {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: Space.x2) {
                         Label("This device is NOT in the profile", systemImage: "xmark.octagon.fill")
                             .foregroundColor(Theme.danger)
                             .font(.subheadline.weight(.semibold))
@@ -261,7 +261,7 @@ struct CertificateDetailView: View {
                 Label("Change Password", systemImage: "lock.rotation")
                     .font(.subheadline.weight(.semibold))
             }
-            .padding(.top, 2)
+            .padding(.top, Space.hair)
         }
     }
 
@@ -277,7 +277,7 @@ struct CertificateDetailView: View {
                     .foregroundColor(.secondary)
             } else {
                 DisclosureGroup("\(profile.devices.count) device\(profile.devices.count == 1 ? "" : "s")") {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: Space.x2) {
                         ForEach(profile.devices, id: \.self) { device in
                             let isMine = !udid.isEmpty && ProvisioningProfile.normalize(device) == ProvisioningProfile.normalize(udid)
                             HStack {
@@ -292,7 +292,7 @@ struct CertificateDetailView: View {
                             }
                         }
                     }
-                    .padding(.top, 8)
+                    .padding(.top, Space.x2)
                 }
                 .font(.subheadline)
             }
@@ -306,9 +306,9 @@ struct CertificateDetailView: View {
                 Text("None").font(.subheadline).foregroundColor(.secondary)
             } else {
                 DisclosureGroup("\(items.count) entitlement\(items.count == 1 ? "" : "s")") {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: Space.x3) {
                         ForEach(items) { item in
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: Space.hair) {
                                 Text(item.key)
                                     .font(.system(.caption, design: .rounded).weight(.semibold))
                                 Text(item.value)
@@ -318,7 +318,7 @@ struct CertificateDetailView: View {
                             }
                         }
                     }
-                    .padding(.top, 8)
+                    .padding(.top, Space.x2)
                 }
                 .font(.subheadline)
             }
@@ -326,7 +326,7 @@ struct CertificateDetailView: View {
     }
 
     private var actions: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Space.x3) {
             PrimaryButton(title: "Rename", systemImage: "pencil", style: .tinted) {
                 draft = certificate?.nickname ?? ""
                 showRename = true

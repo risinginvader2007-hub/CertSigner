@@ -49,7 +49,7 @@ struct InstallSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 22) {
+                VStack(spacing: Space.x6) {
                     header
                     statusIcon
                     statusText
@@ -116,9 +116,9 @@ struct InstallSheet: View {
     // MARK: Pieces
 
     private var header: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: Space.x4) {
             AppIconView(image: signedApps.icons[app.id], name: app.name, size: 56)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.hair) {
                 Text(app.name).font(.headline)
                 Text("\(app.bundleID) · v\(app.version)")
                     .font(.caption)
@@ -173,7 +173,7 @@ struct InstallSheet: View {
     }
 
     private var statusText: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: Space.x2) {
             Text(headline)
                 .font(.title3.weight(.bold))
                 .multilineTextAlignment(.center)
@@ -209,9 +209,9 @@ struct InstallSheet: View {
 
     private var stages: some View {
         Card {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: Space.x4) {
                 ForEach(Stage.allCases, id: \.rawValue) { stage in
-                    HStack(spacing: 12) {
+                    HStack(spacing: Space.x3) {
                         stageIcon(stage).frame(width: 26, height: 26)
                         Text(stage.title)
                             .font(.subheadline.weight(stage == currentStage ? .semibold : .regular))
@@ -249,7 +249,7 @@ struct InstallSheet: View {
 
     private var troubleshooting: some View {
         CardSection("Try this", systemImage: "lightbulb") {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Space.x2) {
                 tip("Fully Local failing? Switch to Semi-Local in Settings → Install (needs internet).")
                 tip("Semi-Local failing? Check you're online; it uses api.palera.in for the manifest.")
                 tip("“Unable to Install” from iOS usually means the device isn't in the profile, or the certificate is revoked.")
@@ -259,7 +259,7 @@ struct InstallSheet: View {
     }
 
     private func tip(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: Space.x2) {
             Text("•")
             Text(text).fixedSize(horizontal: false, vertical: true)
         }
@@ -268,12 +268,12 @@ struct InstallSheet: View {
     }
 
     private var logView: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.x2) {
             Text("LOG")
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.secondary)
-                .padding(.horizontal, 4)
-            VStack(alignment: .leading, spacing: 4) {
+                .padding(.horizontal, Space.x1)
+            VStack(alignment: .leading, spacing: Space.x1) {
                 ForEach(session.log) { line in
                     Text(line.text)
                         .font(.system(.caption2, design: .rounded))
@@ -282,7 +282,7 @@ struct InstallSheet: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .padding(12)
+            .padding(Space.x3)
             .cardBackground(cornerRadius: Theme.smallCorner)
         }
     }
@@ -290,7 +290,7 @@ struct InstallSheet: View {
     @ViewBuilder
     private var actions: some View {
         if failure != nil {
-            VStack(spacing: 12) {
+            VStack(spacing: Space.x3) {
                 PrimaryButton(title: "Try Again", systemImage: "arrow.clockwise") {
                     Task { await begin() }
                 }

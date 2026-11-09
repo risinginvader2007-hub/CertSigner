@@ -77,7 +77,7 @@ struct SignAppSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: Space.x5) {
                     header
                         .opacity(appeared ? 1 : 0)
                         .scaleEffect(appeared ? 1 : 0.95)
@@ -145,7 +145,7 @@ struct SignAppSheet: View {
     // MARK: Sections
 
     private var header: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Space.x3) {
             AppIconView(image: library.icons[app.id], name: app.name, size: 88)
             Text(app.name)
                 .font(.title3.weight(.bold))
@@ -154,7 +154,7 @@ struct SignAppSheet: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .identifierText()
-            HStack(spacing: 8) {
+            HStack(spacing: Space.x2) {
                 StatusBadge(text: "v\(app.version)", kind: .info)
                 StatusBadge(text: app.size.byteString, systemImage: "internaldrive", kind: .neutral)
                 if !app.extensions.isEmpty {
@@ -163,12 +163,12 @@ struct SignAppSheet: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.vertical, Space.x2)
     }
 
     private var noCertificateCard: some View {
         Card {
-            VStack(spacing: 12) {
+            VStack(spacing: Space.x3) {
                 Image(systemName: "checkmark.seal").font(.largeTitle).foregroundColor(accent)
                 Text("Add a certificate to sign").font(.headline)
                 Text("Import your .p12 and matching profile, then come back to this app.")
@@ -187,14 +187,14 @@ struct SignAppSheet: View {
     private var certificateSection: some View {
         CardSection("Certificate", systemImage: "checkmark.seal") {
             // Row 1: glyph + picker (the name may wrap; the row grows to fit).
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: Space.x3) {
                 CertificateGlyph(seed: certificate?.nickname ?? "?", size: 40)
                 // Opens the certificate sheet (one clean row per certificate) instead of a system menu.
                 Button {
                     showCertificatePicker = true
                 } label: {
                     HStack(spacing: Space.x2) {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: Space.hair) {
                             Text(certificate?.displayName ?? "Choose a certificate")
                                 .font(.body.weight(.semibold))
                                 .foregroundColor(.primary)
@@ -219,7 +219,7 @@ struct SignAppSheet: View {
             }
             // Row 2: badges on their own line, never overlapping the name.
             if let certificate {
-                HStack(spacing: 6) {
+                HStack(spacing: Space.x2) {
                     CertificateStatusBadge(status: certificate.status())
                     if let type = certificate.profile?.type {
                         StatusBadge(text: type.rawValue, kind: .neutral)
@@ -259,8 +259,8 @@ struct SignAppSheet: View {
                         if expandedChecks.contains(check.id) { expandedChecks.remove(check.id) } else { expandedChecks.insert(check.id) }
                     }
                 } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(spacing: 4) {
+                    HStack(alignment: .top, spacing: Space.x3) {
+                        VStack(spacing: Space.x1) {
                             Image(systemName: icon(for: check.state))
                                 .font(.title3)
                                 .foregroundColor(color(for: check.state))
@@ -278,7 +278,7 @@ struct SignAppSheet: View {
                             }
                         }
                         .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: Space.x1) {
                             HStack {
                                 Text(check.title).font(.subheadline.weight(.semibold)).foregroundColor(.primary)
                                 Spacer(minLength: 4)
@@ -335,7 +335,7 @@ struct SignAppSheet: View {
 
     private var optionsSection: some View {
         CardSection("Signing Options", systemImage: "slider.horizontal.3") {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: Space.x2) {
                 Text("Signing mode")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.secondary)
@@ -360,7 +360,7 @@ struct SignAppSheet: View {
                     .transition(.opacity)
             } else {
                 Toggle(isOn: $keepOriginalBundleID) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: Space.hair) {
                         Text("Keep original bundle ID")
                         Text(app.bundleID).font(.caption).foregroundColor(.secondary).lineLimit(1)
                     }
@@ -381,7 +381,7 @@ struct SignAppSheet: View {
                         .foregroundColor(.secondary)
                 } else {
                     Toggle(isOn: $options.removeExtensions) {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: Space.hair) {
                             Text("Remove app extensions")
                             Text("\(app.extensions.count) found (widgets, share extensions…)")
                                 .font(.caption).foregroundColor(.secondary)
@@ -402,7 +402,7 @@ struct SignAppSheet: View {
                 get: { installAfter },
                 set: { installAfter = $0; autoInstall = $0 }
             )) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: Space.hair) {
                     Text("Install when done")
                     Text("Opens the iOS install prompt as soon as signing finishes")
                         .font(.caption).foregroundColor(.secondary)
@@ -412,7 +412,7 @@ struct SignAppSheet: View {
     }
 
     private func labeledField(_ title: String, placeholder: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.x2) {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.secondary)
@@ -421,9 +421,9 @@ struct SignAppSheet: View {
     }
 
     private var errorsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.x3) {
             ForEach(errors) { issue in
-                HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .top, spacing: Space.x3) {
                     Image(systemName: "xmark.octagon.fill")
                         .foregroundColor(Theme.danger)
                     Text(issue.message)

@@ -13,7 +13,7 @@ struct SigningProgressView: View {
     @State private var shakes = 0
 
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: Space.x6) {
             ZStack {
                 if let result {
                     AnimatedResultIcon(result: result, size: 132)
@@ -50,9 +50,9 @@ struct SigningProgressView: View {
 
     private var stepList: some View {
         Card {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: Space.x4) {
                 ForEach(SigningStep.allCases) { step in
-                    HStack(spacing: 12) {
+                    HStack(spacing: Space.x3) {
                         stepIcon(step)
                             .frame(width: 26, height: 26)
                         Text(step.title)
@@ -72,14 +72,14 @@ struct SigningProgressView: View {
     }
 
     private var logView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Space.x2) {
             Text("LOG")
                 .font(.caption.weight(.semibold))
                 .foregroundColor(.secondary)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, Space.x1)
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
+                    LazyVStack(alignment: .leading, spacing: Space.x1) {
                         ForEach(log) { line in
                             Text(line.text)
                                 .font(.system(.caption, design: .rounded))
@@ -88,7 +88,7 @@ struct SigningProgressView: View {
                                 .id(line.id)
                         }
                     }
-                    .padding(12)
+                    .padding(Space.x3)
                 }
                 .frame(height: 150)
                 .cardBackground(cornerRadius: Theme.smallCorner)

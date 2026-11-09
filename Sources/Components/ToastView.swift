@@ -90,7 +90,7 @@ struct ToastView: View {
     var onAction: () -> Void = {}
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Space.x3) {
             Image(systemName: toast.systemImage)
                 .foregroundColor(toast.color)
                 .font(.body.weight(.semibold))
@@ -105,8 +105,8 @@ struct ToastView: View {
                 Button(action: onAction) {
                     Text(title)
                         .font(.subheadline.weight(.bold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, Space.x3)
+                        .padding(.vertical, Space.x2)
                         .background(Capsule().fill(Color.primary.opacity(0.1)))
                         .clipShape(Capsule())
                         .contentShape(Capsule())
@@ -115,8 +115,8 @@ struct ToastView: View {
                 .accessibilityLabel(title)
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .padding(.horizontal, Space.x4)
+        .padding(.vertical, Space.x3)
         .frame(minHeight: 44)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(
@@ -124,7 +124,7 @@ struct ToastView: View {
                            startPoint: .leading, endPoint: .trailing), lineWidth: 1))
         .shadow(color: toast.color.opacity(0.18), radius: 18, x: 0, y: 8)
         .shadow(color: .black.opacity(0.15), radius: 16, x: 0, y: 6)
-        .padding(.horizontal, 24)
+        .padding(.horizontal, Space.x6)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isStaticText)
     }

@@ -39,8 +39,8 @@ struct SignedAppDetailView: View {
 
     private func content(_ app: SignedApp) -> some View {
         ScrollView {
-            VStack(spacing: 20) {
-                VStack(spacing: 12) {
+            VStack(spacing: Space.x5) {
+                VStack(spacing: Space.x3) {
                     AppIconView(image: signedApps.icons[app.id], name: app.name, size: 108)
                         .ambientGlow(.black, radius: 20, opacity: 0.25)
                         .scaleEffect(appeared ? 1 : 0.85)
@@ -52,7 +52,7 @@ struct SignedAppDetailView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .identifierText()
-                    HStack(spacing: 8) {
+                    HStack(spacing: Space.x2) {
                         CertificateStatusBadge(status: app.status())
                         StatusBadge(text: "v\(app.version)", kind: .info)
                     }
@@ -63,7 +63,7 @@ struct SignedAppDetailView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .padding(.vertical, Space.x3)
 
                 CardSection("Details", systemImage: "info.circle") {
                     InfoRow(label: "Certificate", value: Certificate.friendlyName(app.certificateName))
@@ -81,9 +81,9 @@ struct SignedAppDetailView: View {
                 .opacity(appeared ? 1 : 0)
                 .offset(y: appeared ? 0 : 10)
 
-                VStack(spacing: 12) {
+                VStack(spacing: Space.x3) {
                     PrimaryButton(title: "Install", systemImage: "arrow.down.app.fill") { showInstall = true }
-                    HStack(spacing: 12) {
+                    HStack(spacing: Space.x3) {
                         PrimaryButton(title: "Re-sign", systemImage: "arrow.triangle.2.circlepath", style: .tinted) {
                             resign(app)
                         }
@@ -91,7 +91,7 @@ struct SignedAppDetailView: View {
                             Label("Share", systemImage: "square.and.arrow.up")
                                 .fontWeight(.semibold)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
+                                .padding(.vertical, Space.x4)
                         }
                         .buttonStyle(.bordered)
                         .buttonBorderShape(.roundedRectangle(radius: 16))
@@ -101,7 +101,7 @@ struct SignedAppDetailView: View {
                             Label("Share signing log", systemImage: "doc.text")
                                 .fontWeight(.semibold)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
+                                .padding(.vertical, Space.x4)
                         }
                         .buttonStyle(.bordered)
                         .buttonBorderShape(.roundedRectangle(radius: 16))

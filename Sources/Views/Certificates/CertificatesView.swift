@@ -14,7 +14,7 @@ struct CertificatesView: View {
     var body: some View {
         Group {
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: Space.x3) {
                     if certificates.certificates.isEmpty {
                         EmptyStateView(
                             systemImage: "checkmark.seal",
@@ -113,15 +113,15 @@ struct CertificatesView: View {
     }
 
     private var hint: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: Space.x3) {
             Image(systemName: "iphone.gen3")
                 .foregroundColor(.secondary)
             Text("Add your device UDID in Settings to check whether this iPhone is included in each profile.")
                 .font(.footnote)
                 .foregroundColor(.secondary)
         }
-        .padding(.horizontal, 4)
-        .padding(.top, 8)
+        .padding(.horizontal, Space.x1)
+        .padding(.top, Space.x2)
     }
 }
 
@@ -157,10 +157,10 @@ struct CertificateCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 14) {
+        VStack(alignment: .leading, spacing: Space.x3) {
+            HStack(alignment: .top, spacing: Space.x4) {
                 CertificateGlyph(seed: certificate.nickname, size: 48)
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Space.x1) {
                     Text(certificate.displayName)
                         .font(.headline)
                         .foregroundColor(.primary)
@@ -175,13 +175,13 @@ struct CertificateCard: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
-                    HStack(spacing: 6) {
+                    HStack(spacing: Space.x2) {
                         CertificateStatusBadge(status: certificate.status())
                         if let type = certificate.profile?.type {
                             StatusBadge(text: type.rawValue, kind: .neutral)
                         }
                     }
-                    .padding(.top, 2)
+                    .padding(.top, Space.hair)
                 }
                 Spacer(minLength: 4)
                 Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
@@ -195,7 +195,7 @@ struct CertificateCard: View {
             }
 
             if let expiration = certificate.expirationDate {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: Space.x2) {
                     if let lifetimeRemaining {
                         ProgressBar(progress: lifetimeRemaining, height: 6, color: barColor)
                     }

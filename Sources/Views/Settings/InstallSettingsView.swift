@@ -83,7 +83,7 @@ struct InstallSettingsView: View {
     @ViewBuilder
     private func certificateRow(_ certificate: ServerCertificate?, source: ServerCertificate.Source) -> some View {
         if let certificate {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: Space.x2) {
                 HStack {
                     Text(certificate.hostname)
                         .font(.system(.subheadline, design: .rounded))
@@ -195,7 +195,7 @@ struct CustomServerCertificateView: View {
 
     private func row(_ title: String, value: String, done: Bool) -> some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.hair) {
                 Text(title).foregroundColor(.primary)
                 Text(value).font(.caption).foregroundColor(.secondary).lineLimit(1)
             }
