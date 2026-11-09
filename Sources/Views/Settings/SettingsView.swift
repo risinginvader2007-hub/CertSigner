@@ -14,6 +14,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.autoCloseInstall) private var autoCloseInstall = true
     @AppStorage(SettingsKeys.signingMode) private var signingMode: SigningMode = .compatibility
     @AppStorage(SettingsKeys.backgroundAnimation) private var backgroundAnimation = true
+    @State private var showCertificatePicker = false
     @AppStorage(SettingsKeys.deleteOriginal) private var deleteOriginal = true
     @AppStorage(SettingsKeys.defaultRemoveExtensions) private var defaultRemoveExtensions = false
     @AppStorage(SettingsKeys.defaultKeepBundleID) private var defaultKeepBundleID = false
@@ -61,8 +62,9 @@ struct SettingsView: View {
                 HStack(spacing: 12) {
                     CertificateGlyph(seed: certificates.active?.nickname ?? "none", size: 34)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(certificates.active?.nickname ?? "No active certificate")
+                        Text(certificates.active?.displayName ?? "No active certificate")
                             .font(.body.weight(.semibold))
+                            .identifierText(minimumScale: 0.85)
                         Text("\(certificates.certificates.count) certificate\(certificates.certificates.count == 1 ? "" : "s")")
                             .font(.caption)
                             .foregroundColor(.secondary)
@@ -74,16 +76,29 @@ struct SettingsView: View {
                 }
             }
             if certificates.certificates.count > 1 {
-                Picker("Active", selection: Binding(
-                    get: { certificates.activeID },
-                    set: { id in
+                // Same bottom sheet as Home's "Switch" (long certificate names don't fit a menu).
+                Button {
+                    showCertificatePicker = true
+                } label: {
+                    HStack {
+                        Text("Active")
+                            .foregroundColor(.primary)
+                        Spacer(minLength: Space.x3)
+                        Text(certificates.active?.displayName ?? "None")
+                            .foregroundColor(.secondary)
+                            .identifierText()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .sheet(isPresented: $showCertificatePicker) {
+                    CertificatePickerSheet(title: "Active Certificate", selectedID: certificates.activeID) { id in
                         certificates.setActive(id)
                         Haptics.success()
                     }
-                )) {
-                    ForEach(certificates.certificates) { cert in
-                        Text(cert.nickname).tag(Optional(cert.id))
-                    }
+                    .sheetChrome()
                 }
             }
             Button {

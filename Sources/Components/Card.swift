@@ -113,6 +113,8 @@ struct InfoRow: View {
             Text(value)
                 .font(monospaced ? .system(.subheadline, design: .rounded) : .subheadline)
                 .multilineTextAlignment(.trailing)
+                // Values here are names / IDs: one line, shrink a little, truncate in the middle.
+                .identifierText(minimumScale: 0.7)
                 .textSelection(.enabled)
         }
         .font(.subheadline)

@@ -47,7 +47,9 @@ struct SourcesView: View {
                             NavigationLink {
                                 RepositoryView(repoID: repo.id)
                             } label: {
-                                RepositoryRow(repo: repo, refreshing: store.refreshing.contains(repo.id))
+                                RepositoryRow(repo: repo, refreshing: store.refreshing.contains(repo.id)) {
+                                    store.startRefresh(repo.id)
+                                }
                             }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
@@ -111,7 +113,8 @@ struct SourcesView: View {
                 AddSourceSheet()
                     .sheetChrome()
             }
-            .task { await store.refreshIfStale() }
+            // Starts store-owned refreshes; nothing here can cancel them.
+            .onAppear { store.refreshIfStale() }
         }
     }
 }
@@ -119,24 +122,30 @@ struct SourcesView: View {
 struct RepositoryRow: View {
     let repo: Repository
     var refreshing = false
+    var onRetry: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 12) {
             RemoteIcon(url: repo.iconURL, name: repo.name, size: 44)
             VStack(alignment: .leading, spacing: 2) {
                 Text(repo.name).font(.body.weight(.semibold)).lineLimit(1)
-                if let error = repo.lastError {
+                // Cached apps stay listed while refreshing; only real failures show a warning.
+                Text(detail).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                if let error = repo.lastError, !refreshing {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundColor(Theme.warning)
                         .lineLimit(2)
-                } else {
-                    Text(detail).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 0)
             if refreshing {
                 ProgressView()
+            } else if repo.lastError != nil, let onRetry {
+                Button("Retry", action: onRetry)
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.borderless)
             }
         }
         .padding(.vertical, 2)
@@ -145,11 +154,16 @@ struct RepositoryRow: View {
     private var detail: String {
         var parts = ["\(repo.apps.count) app\(repo.apps.count == 1 ? "" : "s")"]
         if let updated = repo.lastUpdated {
-            let formatter = RelativeDateTimeFormatter()
-            formatter.unitsStyle = .short
-            parts.append("updated \(formatter.localizedString(for: updated, relativeTo: Date()))")
+            parts.append(Self.lastUpdatedText(updated))
         }
         return parts.joined(separator: " · ")
+    }
+
+    static func lastUpdatedText(_ date: Date) -> String {
+        if Date().timeIntervalSince(date) < 60 { return "Updated just now" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return "Last updated \(formatter.localizedString(for: date, relativeTo: Date()))"
     }
 }
 
@@ -320,10 +334,22 @@ struct RepositoryView: View {
             if let subtitle = repo.subtitle {
                 Text(subtitle).font(.subheadline).foregroundColor(.secondary).lineLimit(4)
             }
-            if let error = repo.lastError {
-                Label("Last refresh failed: \(error)", systemImage: "exclamationmark.triangle.fill")
+            if let error = repo.lastError, !store.refreshing.contains(repo.id) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Label("Last refresh failed: \(error)", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(Theme.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button("Retry") { store.startRefresh(repo.id) }
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.borderless)
+                }
+            }
+            if let updated = repo.lastUpdated {
+                Text(RepositoryRow.lastUpdatedText(updated))
                     .font(.caption)
-                    .foregroundColor(Theme.warning)
+                    .foregroundColor(.secondary)
             }
             HStack(spacing: 8) {
                 StatusBadge(text: "\(repo.apps.count) apps", systemImage: "square.grid.2x2", kind: .info)
@@ -501,13 +527,38 @@ enum SourceActions {
 
 // MARK: - Remote images
 
-/// Small in-memory cache for source icons (NSCache is thread-safe).
+/// Source icon cache: memory (NSCache, thread-safe) backed by Caches/SourceIcons on disk,
+/// so icons show instantly on the next launch, before any network request.
 final class RemoteImageCache: @unchecked Sendable {
     static let shared = RemoteImageCache()
     private let cache = NSCache<NSURL, UIImage>()
+    private let folder: URL = {
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("SourceIcons", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
 
     func image(for url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
-    func store(_ image: UIImage, for url: URL) { cache.setObject(image, forKey: url as NSURL) }
+
+    func store(_ image: UIImage, for url: URL) {
+        cache.setObject(image, forKey: url as NSURL)
+        if let data = image.pngData() { try? data.write(to: fileURL(for: url), options: .atomic) }
+    }
+
+    /// Reads the on-disk copy (call off the main thread).
+    func diskImage(for url: URL) -> UIImage? {
+        guard let data = try? Data(contentsOf: fileURL(for: url)), let image = UIImage(data: data) else { return nil }
+        cache.setObject(image, forKey: url as NSURL)
+        return image
+    }
+
+    private func fileURL(for url: URL) -> URL {
+        // Stable FNV-1a hash of the URL (String.hashValue changes every launch).
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in url.absoluteString.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100000001b3 }
+        return folder.appendingPathComponent(String(hash, radix: 16) + ".png")
+    }
 }
 
 /// App icon loaded from a URL, falling back to the gradient initial tile.
@@ -534,6 +585,10 @@ struct RemoteIcon: View {
         guard let url else { image = nil; return }
         if let cached = RemoteImageCache.shared.image(for: url) {
             image = cached
+            return
+        }
+        if let onDisk = await Task.detached(priority: .userInitiated, operation: { RemoteImageCache.shared.diskImage(for: url) }).value {
+            image = onDisk
             return
         }
         guard let result = try? await URLSession.shared.data(from: url),

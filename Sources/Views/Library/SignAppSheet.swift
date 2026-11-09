@@ -26,6 +26,7 @@ struct SignAppSheet: View {
     @State private var keepOriginalBundleID = false
     @State private var prefilled = false
     @State private var installAfter = false
+    @State private var showCertificatePicker = false
     /// Per-app override of the Settings signing mode.
     @State private var mode: SigningMode = SigningMode.defaultMode
     /// Passed checks start collapsed; failing / unchecked ones are always open.
@@ -108,6 +109,12 @@ struct SignAppSheet: View {
                 }
             }
             .modifier(ToastHost(center: toasts))
+            .sheet(isPresented: $showCertificatePicker) {
+                CertificatePickerSheet(title: "Certificate", selectedID: certificateID) { id in
+                    withAnimation(Theme.spring) { certificateID = id }
+                }
+                .sheetChrome()
+            }
         }
         .onAppear {
             prefill()
@@ -146,7 +153,7 @@ struct SignAppSheet: View {
             Text(app.bundleID)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
-                .lineLimit(1)
+                .identifierText()
             HStack(spacing: 8) {
                 StatusBadge(text: "v\(app.version)", kind: .info)
                 StatusBadge(text: app.size.byteString, systemImage: "internaldrive", kind: .neutral)
@@ -182,15 +189,33 @@ struct SignAppSheet: View {
             // Row 1: glyph + picker (the name may wrap; the row grows to fit).
             HStack(alignment: .center, spacing: 12) {
                 CertificateGlyph(seed: certificate?.nickname ?? "?", size: 40)
-                Picker("Certificate", selection: $certificateID) {
-                    ForEach(certificates.certificates) { cert in
-                        Text(cert.nickname).tag(Optional(cert.id))
+                // Opens the certificate sheet (one clean row per certificate) instead of a system menu.
+                Button {
+                    showCertificatePicker = true
+                } label: {
+                    HStack(spacing: Space.x2) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(certificate?.displayName ?? "Choose a certificate")
+                                .font(.body.weight(.semibold))
+                                .foregroundColor(.primary)
+                                .identifierText(minimumScale: 0.85)
+                            if let certificate {
+                                Text(certificate.rawIDLine ?? certificate.typeAndExpiry)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .identifierText()
+                            }
+                        }
+                        Spacer(minLength: Space.x2)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(accent)
                     }
+                    .contentShape(Rectangle())
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .fixedSize(horizontal: false, vertical: true)
+                .buttonStyle(PressableButtonStyle(scale: 0.98))
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("Certificate: \(certificate?.displayName ?? "none"). Change")
             }
             // Row 2: badges on their own line, never overlapping the name.
             if let certificate {

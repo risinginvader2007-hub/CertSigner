@@ -44,6 +44,9 @@ struct Repository: Codable, Hashable, Identifiable {
     /// Set when the last refresh failed (the previous app list is kept).
     var lastError: String?
     var dateAdded: Date
+    /// HTTP validators from the last good response, sent back as If-None-Match / If-Modified-Since.
+    var etag: String? = nil
+    var lastModified: String? = nil
 }
 
 enum RepositoryError: LocalizedError {

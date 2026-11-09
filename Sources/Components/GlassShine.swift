@@ -124,6 +124,7 @@ private struct ShinePressBody<S: Shape>: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             )
+            .contentShape(shape)
             .scaleEffect(configuration.isPressed && !reduceMotion ? scale : 1)
             .opacity(configuration.isPressed ? 0.92 : 1)
             .animation(Motion.snappy, value: configuration.isPressed)
@@ -183,13 +184,14 @@ private final class TouchDownRecognizer: UIGestureRecognizer, UIGestureRecognize
 // MARK: - Liquid Glass capsule (iOS 26) with a tinted fallback
 
 extension View {
-    /// Small accent capsule behind a pill button: tinted, interactive Liquid Glass on iOS 26
-    /// (native touch-following highlight), the existing flat tinted capsule before that.
+    /// Small accent capsule behind a pill button: tinted Liquid Glass on iOS 26, the existing flat
+    /// tinted capsule before that.
     @ViewBuilder
     func accentPillBackground(_ accent: Color) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
-            self.glassEffect(.regular.tint(accent.opacity(0.22)).interactive(), in: Capsule())
+            // Not `.interactive()`: its press bloom blurred the pill and showed outside the capsule.
+            self.glassEffect(.regular.tint(accent.opacity(0.22)), in: Capsule())
         } else {
             self.background(Capsule().fill(accent.opacity(0.14)))
         }

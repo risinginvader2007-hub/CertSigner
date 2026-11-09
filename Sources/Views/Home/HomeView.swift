@@ -11,6 +11,7 @@ struct HomeView: View {
     @Environment(\.themeAccent) private var accent
 
     @State private var showPicker = false
+    @State private var showCertificatePicker = false
     @State private var quickSignPick = false
     @State private var dropTargeted = false
     @State private var appeared = false
@@ -69,6 +70,12 @@ struct HomeView: View {
                     onCancel: { showPicker = false }
                 )
                 .ignoresSafeArea()
+            }
+            .sheet(isPresented: $showCertificatePicker) {
+                CertificatePickerSheet(selectedID: certificates.activeID) { id in
+                    withAnimation(Theme.spring) { certificates.setActive(id) }
+                }
+                .sheetChrome()
             }
         }
         .onAppear {
@@ -285,9 +292,17 @@ struct HomeView: View {
                             Text("ACTIVE CERTIFICATE")
                                 .font(.caption2.weight(.bold))
                                 .foregroundColor(.secondary)
-                            Text(active.nickname)
+                            Text(active.displayName)
                                 .font(.headline)
-                                .lineLimit(1)
+                                .identifierText(minimumScale: 0.85)
+                                .id(active.id)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            if let raw = active.rawIDLine {
+                                Text(raw)
+                                    .font(.caption2.monospaced())
+                                    .foregroundColor(.secondary)
+                                    .identifierText()
+                            }
                         }
                         Spacer()
                         CertificateStatusBadge(status: active.status())
@@ -302,26 +317,23 @@ struct HomeView: View {
                     }
                     HStack(spacing: 10) {
                         if certificates.certificates.count > 1 {
-                            Menu {
-                                Picker("Active certificate", selection: Binding(
-                                    get: { certificates.activeID },
-                                    set: { id in
-                                        withAnimation(Theme.spring) { certificates.setActive(id) }
-                                        Haptics.success()
-                                    }
-                                )) {
-                                    ForEach(certificates.certificates) { cert in
-                                        Text(cert.nickname).tag(Optional(cert.id))
-                                    }
-                                }
+                            // A plain button + bottom sheet (a system Menu blurred the pill and
+                            // left a square snapshot behind when it closed).
+                            Button {
+                                showCertificatePicker = true
                             } label: {
                                 Label("Switch", systemImage: "arrow.left.arrow.right")
                                     .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(accent)
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 9)
                                     .accentPillBackground(accent)
                                     .glassShine(in: Capsule())
+                                    .clipShape(Capsule())
+                                    .contentShape(Capsule())
                             }
+                            .buttonStyle(PressableButtonStyle(scale: 0.95))
+                            .accessibilityLabel("Switch certificate")
                         }
                         NavigationLink(value: HomeRoute.certificates) {
                             Label("Manage", systemImage: "slider.horizontal.3")
@@ -331,6 +343,7 @@ struct HomeView: View {
                                 .padding(.vertical, 9)
                                 .accentPillBackground(accent)
                                 .glassShine(in: Capsule())
+                                .clipShape(Capsule())
                                 .contentShape(Capsule())
                         }
                         .buttonStyle(ShinePressStyle(shape: Capsule(), scale: 0.95))

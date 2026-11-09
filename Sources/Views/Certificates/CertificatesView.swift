@@ -151,10 +151,16 @@ struct CertificateCard: View {
             HStack(alignment: .top, spacing: 14) {
                 CertificateGlyph(seed: certificate.nickname, size: 48)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(certificate.nickname)
+                    Text(certificate.displayName)
                         .font(.headline)
                         .foregroundColor(.primary)
-                        .lineLimit(1)
+                        .identifierText(minimumScale: 0.85)
+                    if let raw = certificate.rawIDLine {
+                        Text(raw)
+                            .font(.caption2.monospaced())
+                            .foregroundColor(.secondary)
+                            .identifierText()
+                    }
                     Text(certificate.profile?.teamName ?? "Profile unreadable")
                         .font(.subheadline)
                         .foregroundColor(.secondary)

@@ -123,7 +123,7 @@ struct InstallSheet: View {
                 Text("\(app.bundleID) · v\(app.version)")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                    .lineLimit(1)
+                    .identifierText()
                 if !session.methodDescription.isEmpty {
                     Text(session.methodDescription)
                         .font(.caption2.weight(.medium))

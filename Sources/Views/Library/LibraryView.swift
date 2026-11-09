@@ -91,7 +91,8 @@ struct LibraryView: View {
     private var certificateChoices: [CertificateChoice] {
         var seen: [UUID: String] = [:]
         for app in signedApps.apps where seen[app.certificateID] == nil {
-            seen[app.certificateID] = app.certificateName
+            seen[app.certificateID] = certificates.certificates.first { $0.id == app.certificateID }?.displayName
+                ?? Certificate.friendlyName(app.certificateName)
         }
         return seen.map { CertificateChoice(id: $0.key, name: $0.value) }.sorted { $0.name < $1.name }
     }
@@ -325,6 +326,8 @@ struct LibraryView: View {
                     .frame(width: 28, height: 28)
                     .background(Circle().fill(isFiltering ? accent : Color.clear))
                     .glassIconButton()
+                    .clipShape(Circle())
+                    .contentShape(Circle())
             }
             .accessibilityLabel("Sort and filter")
         }
@@ -521,10 +524,10 @@ struct SignedAppListRow: View {
                     Text(app.name)
                         .font(.body.weight(.semibold))
                         .lineLimit(1)
-                    Text("v\(app.version) · \(app.certificateName)")
+                    Text("v\(app.version) · \(Certificate.friendlyName(app.certificateName))")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                        .lineLimit(1)
+                        .identifierText()
                     HStack(spacing: 6) {
                         CertificateStatusBadge(status: app.status())
                         if let expires = app.expiresAt {

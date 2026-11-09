@@ -50,6 +50,7 @@ struct SignedAppDetailView: View {
                     Text(app.bundleID)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
+                        .identifierText()
                     HStack(spacing: 8) {
                         CertificateStatusBadge(status: app.status())
                         StatusBadge(text: "v\(app.version)", kind: .info)
@@ -64,7 +65,7 @@ struct SignedAppDetailView: View {
                 .padding(.vertical, 12)
 
                 CardSection("Details", systemImage: "info.circle") {
-                    InfoRow(label: "Certificate", value: app.certificateName)
+                    InfoRow(label: "Certificate", value: Certificate.friendlyName(app.certificateName))
                     SoftDivider()
                     InfoRow(label: "Signed", value: app.signedAt.formatted(date: .abbreviated, time: .shortened))
                     SoftDivider()

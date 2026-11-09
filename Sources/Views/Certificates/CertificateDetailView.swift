@@ -35,7 +35,7 @@ struct CertificateDetailView: View {
             }
         }
         .background(Theme.background.ignoresSafeArea())
-        .navigationTitle(certificate?.nickname ?? "Certificate")
+        .navigationTitle(certificate?.displayName ?? "Certificate")
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -103,9 +103,16 @@ struct CertificateDetailView: View {
         VStack(spacing: 14) {
             CertificateGlyph(seed: certificate.nickname, size: 84)
             VStack(spacing: 4) {
-                Text(certificate.nickname)
+                Text(certificate.displayName)
                     .font(.title2.weight(.bold))
                     .multilineTextAlignment(.center)
+                    .identifierText(minimumScale: 0.7)
+                if let raw = certificate.rawIDLine {
+                    Text(raw)
+                        .font(.caption.monospaced())
+                        .foregroundColor(.secondary)
+                        .identifierText()
+                }
                 Text(certificate.profile?.teamName ?? "Unknown team")
                     .font(.subheadline)
                     .foregroundColor(.secondary)

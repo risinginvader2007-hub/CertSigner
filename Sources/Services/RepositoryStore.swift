@@ -39,6 +39,9 @@ final class RepositoryStore: ObservableObject {
     @Published private(set) var downloads: [String: RepoDownload] = [:]
 
     private var downloadTasks: [String: Task<Void, Never>] = [:]
+    /// One running refresh per source, owned by the store (app lifetime) so leaving or redrawing
+    /// a screen can never cancel it. A second request for the same source reuses the running one.
+    private var refreshTasks: [UUID: Task<Void, Never>] = [:]
     private var lastAutoRefresh: Date?
     private let indexURL: URL
 
@@ -47,7 +50,14 @@ final class RepositoryStore: ObservableObject {
             .appendingPathComponent("Sources", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         indexURL = folder.appendingPathComponent("sources.json")
-        repositories = load()
+        repositories = load().map { repo in
+            // Older builds stored a cancelled fetch as an error; that was never a real failure.
+            var repo = repo
+            if let error = repo.lastError, Self.looksLikeCancellation(error) { repo.lastError = nil }
+            return repo
+        }
+        // Refresh on launch, independent of any screen.
+        Task { @MainActor [weak self] in self?.refreshIfStale() }
     }
 
     var allApps: [SourceEntry] {
@@ -111,13 +121,68 @@ final class RepositoryStore: ObservableObject {
 
     // MARK: Refresh
 
-    func refresh(_ id: UUID) async {
-        guard let repo = repository(id), !refreshing.contains(id) else { return }
+    /// Starts (or reuses) the store-owned refresh for one source and returns its task.
+    @discardableResult
+    func startRefresh(_ id: UUID) -> Task<Void, Never> {
+        if let running = refreshTasks[id] { return running }
         refreshing.insert(id)
-        defer { refreshing.remove(id) }
-        do {
-            let parsed = try await fetch(repo.url)
-            guard let index = repositories.firstIndex(where: { $0.id == id }) else { return }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performRefresh(id)
+            self.refreshTasks[id] = nil
+            self.refreshing.remove(id)
+        }
+        refreshTasks[id] = task
+        return task
+    }
+
+    /// Waits for the source's refresh. Cancelling the caller (pull-to-refresh ending, view going
+    /// away) only stops the waiting, never the refresh itself.
+    func refresh(_ id: UUID) async {
+        await startRefresh(id).value
+    }
+
+    /// Refreshes every source in parallel, each with its own status.
+    func refreshAll() async {
+        lastAutoRefresh = Date()
+        let tasks = repositories.map { startRefresh($0.id) }
+        await withTaskGroup(of: Void.self) { group in
+            for task in tasks {
+                group.addTask { await task.value }
+            }
+        }
+    }
+
+    /// Refreshes on launch / first appearance and then at most every 30 minutes. Never blocks the caller.
+    func refreshIfStale() {
+        if let last = lastAutoRefresh, Date().timeIntervalSince(last) < 30 * 60 { return }
+        lastAutoRefresh = Date()
+        for repo in repositories { startRefresh(repo.id) }
+    }
+
+    private func performRefresh(_ id: UUID) async {
+        guard let repo = repository(id) else { return }
+        var outcome: FetchOutcome?
+        var failure: Error?
+        // One try plus one retry after a short pause; a cancelled or failed first attempt retries.
+        for attempt in 0..<2 {
+            if attempt > 0 { try? await Task.sleep(nanoseconds: 1_500_000_000) }
+            do {
+                outcome = try await fetch(repo.url, etag: repo.etag, lastModified: repo.lastModified)
+                failure = nil
+                break
+            } catch {
+                failure = error
+                AppLog.info("Refreshing source \(repo.name): attempt \(attempt + 1) failed: \(Self.reason(for: error))")
+            }
+        }
+        guard let index = repositories.firstIndex(where: { $0.id == id }) else { return }
+        switch outcome {
+        case .notModified:
+            repositories[index].lastUpdated = Date()
+            repositories[index].lastError = nil
+            AppLog.info("Source \(repo.name) unchanged (304)")
+        case .fresh(let parsed, let etag, let lastModified):
             var updated = repositories[index]
             updated.name = parsed.name
             updated.subtitle = parsed.subtitle
@@ -126,42 +191,90 @@ final class RepositoryStore: ObservableObject {
             if !parsed.apps.isEmpty { updated.apps = parsed.apps }
             updated.lastUpdated = Date()
             updated.lastError = parsed.apps.isEmpty ? RepositoryError.noApps.localizedDescription : nil
+            updated.etag = parsed.apps.isEmpty ? nil : etag
+            updated.lastModified = parsed.apps.isEmpty ? nil : lastModified
             repositories[index] = updated
-        } catch {
-            if let index = repositories.firstIndex(where: { $0.id == id }) {
-                repositories[index].lastError = error.localizedDescription
+        case nil:
+            if let failure, !Self.isCancellation(failure) {
+                // Real failure: keep the last good apps, show the reason.
+                repositories[index].lastError = Self.reason(for: failure)
+                AppLog.error("Refreshing source \(repo.name) failed: \(Self.reason(for: failure))")
             }
-            AppLog.error("Refreshing source \(repo.name) failed: \(error.localizedDescription)")
+            // Cancelled twice: no result. Keep the last good data and say nothing.
         }
         save()
     }
 
-    func refreshAll() async {
-        lastAutoRefresh = Date()
-        await withTaskGroup(of: Void.self) { group in
-            for repo in repositories {
-                group.addTask { await self.refresh(repo.id) }
-            }
-        }
+    private enum FetchOutcome {
+        case notModified
+        case fresh(RepositoryParser.Parsed, etag: String?, lastModified: String?)
     }
 
-    /// Refreshes on first appearance and then at most every 30 minutes.
-    func refreshIfStale() async {
-        if let last = lastAutoRefresh, Date().timeIntervalSince(last) < 30 * 60 { return }
-        await refreshAll()
-    }
-
-    private func fetch(_ url: URL) async throws -> RepositoryParser.Parsed {
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+    private func fetch(_ url: URL, etag: String?, lastModified: String?) async throws -> FetchOutcome {
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let etag { request.setValue(etag, forHTTPHeaderField: "If-None-Match") }
+        if let lastModified { request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since") }
         let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+        let http = response as? HTTPURLResponse
+        if http?.statusCode == 304 { return .notModified }
+        if let http, !(200..<300).contains(http.statusCode) {
             throw RepositoryError.http(http.statusCode)
         }
         let base = response.url ?? url
-        return try await Task.detached(priority: .userInitiated) {
+        let parsed = try await Task.detached(priority: .userInitiated) {
             try RepositoryParser.parse(data, sourceURL: base)
         }.value
+        return .fresh(parsed, etag: http?.value(forHTTPHeaderField: "ETag"),
+                      lastModified: http?.value(forHTTPHeaderField: "Last-Modified"))
+    }
+
+    private func fetch(_ url: URL) async throws -> RepositoryParser.Parsed {
+        switch try await fetch(url, etag: nil, lastModified: nil) {
+        case .fresh(let parsed, _, _): return parsed
+        case .notModified: throw RepositoryError.http(304)
+        }
+    }
+
+    nonisolated static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let url = error as? URLError, url.code == .cancelled { return true }
+        return (error as NSError).domain == NSURLErrorDomain && (error as NSError).code == NSURLErrorCancelled
+    }
+
+    nonisolated static func looksLikeCancellation(_ message: String) -> Bool {
+        let text = message.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        return text == "cancelled" || text == "canceled" || text.contains("cancellationerror")
+    }
+
+    /// The real reason, in plain words.
+    nonisolated static func reason(for error: Error) -> String {
+        if let url = error as? URLError {
+            switch url.code {
+            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff:
+                return "You're offline. Check Wi-Fi or mobile data."
+            case .timedOut:
+                return "The source didn't respond within 20 seconds."
+            case .cannotFindHost, .dnsLookupFailed:
+                return "Couldn't find the source's server."
+            case .cannotConnectToHost:
+                return "Couldn't connect to the source's server."
+            case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+                 .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot:
+                return "The source's secure connection failed."
+            case .badServerResponse, .cannotParseResponse:
+                return "The server sent a broken response."
+            case .cancelled:
+                return "Cancelled"
+            default:
+                break
+            }
+        }
+        if let repo = error as? RepositoryError {
+            if case .notJSON = repo { return "The source didn't return valid JSON." }
+            return repo.localizedDescription
+        }
+        return error.localizedDescription
     }
 
     // MARK: Downloads

@@ -27,6 +27,7 @@ struct SearchView: View {
         guard !trimmed.isEmpty else { return [] }
         return certificates.certificates.filter {
             $0.nickname.lowercased().contains(trimmed)
+                || $0.displayName.lowercased().contains(trimmed)
                 || ($0.profile?.teamName.lowercased().contains(trimmed) ?? false)
                 || ($0.profile?.teamID.lowercased().contains(trimmed) ?? false)
         }
@@ -66,7 +67,7 @@ struct SearchView: View {
                                         AppIconView(image: signedApps.icons[app.id], name: app.name, size: 40)
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(app.name).font(.body.weight(.semibold))
-                                            Text(app.bundleID).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                                            Text(app.bundleID).font(.caption).foregroundColor(.secondary).identifierText()
                                         }
                                         Spacer()
                                         CertificateStatusBadge(status: app.status())
@@ -91,7 +92,7 @@ struct SearchView: View {
                                     HStack(spacing: 12) {
                                         CertificateGlyph(seed: certificate.nickname, size: 36)
                                         VStack(alignment: .leading, spacing: 2) {
-                                            Text(certificate.nickname).font(.body.weight(.semibold))
+                                            Text(certificate.displayName).font(.body.weight(.semibold)).identifierText(minimumScale: 0.85)
                                             Text(certificate.profile?.teamName ?? "Unknown team")
                                                 .font(.caption).foregroundColor(.secondary)
                                         }
