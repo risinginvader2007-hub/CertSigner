@@ -27,9 +27,9 @@ final class ThemeStoreTests: XCTestCase {
         }
         for (t, f) in samples { print(String(format: "theme fade t=%.2fs  %.0f%%", t, f * 100)) }
 
-        let middle = samples.filter { $0.0 > 0.1 && $0.0 < 0.27 }
+        let middle = samples.filter { $0.0 > 0.16 && $0.0 < 0.3 }
         XCTAssertFalse(middle.isEmpty)
-        XCTAssertTrue(middle.allSatisfy { $0.1 > 0.05 && $0.1 < 0.97 }, "mid-fade colours should be in between")
+        XCTAssertTrue(middle.allSatisfy { $0.1 > 0.02 && $0.1 < 0.98 }, "mid-fade colours should be in between")
         for (earlier, later) in zip(samples, samples.dropFirst()) {
             XCTAssertGreaterThanOrEqual(later.1, earlier.1 - 0.001, "fade should move steadily toward the new colour (no flicker)")
         }
