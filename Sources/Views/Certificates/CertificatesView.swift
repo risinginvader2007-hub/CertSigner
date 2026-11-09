@@ -5,8 +5,9 @@ struct CertificatesView: View {
     @EnvironmentObject private var toasts: ToastCenter
     @EnvironmentObject private var importer: ImportCoordinator
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
-    /// Cards currently playing the delete dissolve.
-    @State private var deleting: Set<UUID> = []
+    /// Cards currently playing the shared delete animation.
+    @State private var deletePhases: [UUID: DeletePhase] = [:]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
 
     /// Pushed from Settings / Home, so no NavigationStack of its own.
@@ -23,6 +24,7 @@ struct CertificatesView: View {
                             action: { importer.showCertificateImport = true }
                         )
                         .padding(.top, 60)
+                        .emptyStateEntrance()
                     } else {
                         ForEach(Array(certificates.certificates.enumerated()), id: \.element.id) { index, certificate in
                             // View-based link: works from every stack that pushes this list (Home, Settings),
@@ -33,7 +35,7 @@ struct CertificatesView: View {
                                 CertificateCard(certificate: certificate, isActive: certificate.id == certificates.activeID)
                             }
                             .staggeredEntrance(index, active: appeared)
-                            .dissolving(deleting.contains(certificate.id))
+                            .deleteExit(deletePhases[certificate.id], cornerRadius: Theme.corner, clip: false)
                             .buttonStyle(PressableButtonStyle(scale: 0.98))
                             .transition(.asymmetric(insertion: .scale(scale: 0.9).combined(with: .opacity), removal: .identity))
                             .contextMenu { menu(for: certificate) }
@@ -44,7 +46,7 @@ struct CertificatesView: View {
                     }
                 }
                 .padding(Theme.padding)
-                .animation(Theme.spring, value: certificates.certificates.map(\.id))
+                .animation(DeleteMotion.collapse, value: certificates.certificates.map(\.id))
                 .animation(Theme.spring, value: certificates.activeID)
             }
             .background(AuroraBackground(intensity: 0.6))
@@ -52,6 +54,17 @@ struct CertificatesView: View {
             .onAppear { appeared = true }
             .navigationTitle("Certificates")
             .navigationBarTitleDisplayMode(.inline)
+            // Delete from the detail screen: it pops first, then the card leaves here.
+            .onReceive(RowDeleteRequests.shared.$requested) { ids in
+                for id in ids where certificates.certificates.contains(where: { $0.id == id }) {
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: DeleteMotion.popNanoseconds)
+                        guard let certificate = certificates.certificates.first(where: { $0.id == id }),
+                              RowDeleteRequests.shared.claim(id) else { return }
+                        dissolveDelete(certificate)
+                    }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -67,16 +80,13 @@ struct CertificatesView: View {
         }
     }
 
-    /// No confirmation: the card dissolves, then the unchanged delete runs and the cards below slide up.
+    /// No confirmation: the shared delete animation plays, then the unchanged delete runs and the
+    /// cards below move up.
     private func dissolveDelete(_ certificate: Certificate) {
-        guard !deleting.contains(certificate.id) else { return }
-        Haptics.impact(.light)
-        withAnimation(DeleteMotion.dissolve) { _ = deleting.insert(certificate.id) }
-        Task {
-            try? await Task.sleep(nanoseconds: DeleteMotion.dissolveNanoseconds)
-            withAnimation(Motion.smooth) { certificates.delete(certificate.id) }
+        guard deletePhases[certificate.id] == nil else { return }
+        DeleteMotion.run(reduceMotion: reduceMotion, setPhase: { deletePhases[certificate.id] = $0 }) {
+            certificates.delete(certificate.id)
             toasts.show("Deleted \(certificate.nickname)", kind: .success)
-            deleting.remove(certificate.id)
         }
     }
 

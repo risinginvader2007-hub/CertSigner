@@ -12,7 +12,7 @@ struct CertificateDetailView: View {
 
     @State private var showRename = false
     @State private var showPassword = false
-    @State private var dissolvingOut = false
+    @State private var leaving = false
     @State private var draft = ""
 
     private var certificate: Certificate? {
@@ -81,19 +81,23 @@ struct CertificateDetailView: View {
         } message: {
             Text("The password is verified against the .p12 and stored in the Keychain.")
         }
-        .dissolving(dissolvingOut)
+        .opacity(leaving ? 0.6 : 1)
+        .allowsHitTesting(!leaving)
     }
 
-    /// No confirmation: the page dissolves, then the unchanged delete runs and the view pops.
+    /// No confirmation: pop back to the Certificates list first, then the list plays the shared row
+    /// animation and runs the unchanged delete. Falls back to a plain delete if no list shows it.
     private func deleteNow() {
-        guard let certificate, !dissolvingOut else { return }
-        Haptics.impact(.light)
-        withAnimation(DeleteMotion.dissolve) { dissolvingOut = true }
-        Task {
-            try? await Task.sleep(nanoseconds: DeleteMotion.dissolveNanoseconds)
-            certificates.delete(certificate.id)
-            toasts.show("Deleted \(certificate.nickname)", kind: .success)
-            dismiss()
+        guard let certificate, !leaving else { return }
+        withAnimation(.easeOut(duration: 0.2)) { leaving = true }
+        dismiss()
+        let store = certificates
+        let toastCenter = toasts
+        let id = certificate.id
+        let name = certificate.nickname
+        RowDeleteRequests.shared.request(id) {
+            withAnimation(DeleteMotion.collapse) { store.delete(id) }
+            toastCenter.show("Deleted \(name)", kind: .success)
         }
     }
 

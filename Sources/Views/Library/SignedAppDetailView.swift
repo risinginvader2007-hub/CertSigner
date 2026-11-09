@@ -10,7 +10,8 @@ struct SignedAppDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showInstall = false
-    @State private var dissolvingOut = false
+    /// Delete tapped: the page fades a little while it pops back to the list.
+    @State private var leaving = false
     /// Shareable copy of this app's signing log (apps signed before logs were saved have none).
     @State private var signingLog: URL?
     @State private var appeared = false
@@ -114,19 +115,23 @@ struct SignedAppDetailView: View {
         .sheet(isPresented: $showInstall) {
             InstallSheet(app: app).sheetChrome()
         }
-        .dissolving(dissolvingOut)
+        .opacity(leaving ? 0.6 : 1)
+        .allowsHitTesting(!leaving)
     }
 
-    /// No confirmation: the page dissolves, then the unchanged delete runs and the view pops.
+    /// No confirmation: pop back to the list first (normal transition, Back stays visible), then the
+    /// list plays the shared row animation and removes the app. Falls back to a plain removal if
+    /// no list shows it.
     private func deleteNow(_ app: SignedApp) {
-        guard !dissolvingOut else { return }
-        Haptics.impact(.light)
-        withAnimation(DeleteMotion.dissolve) { dissolvingOut = true }
-        Task {
-            try? await Task.sleep(nanoseconds: DeleteMotion.dissolveNanoseconds)
-            signedApps.delete(app)
-            toasts.show("Deleted \(app.name)", kind: .success)
-            dismiss()
+        guard !leaving else { return }
+        withAnimation(.easeOut(duration: 0.2)) { leaving = true }
+        dismiss()
+        let store = signedApps
+        let toastCenter = toasts
+        RowDeleteRequests.shared.request(app.id) {
+            withAnimation(DeleteMotion.collapse) {
+                LibraryView.deleteWithUndo(app, signedApps: store, toasts: toastCenter)
+            }
         }
     }
 

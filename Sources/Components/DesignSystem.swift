@@ -490,33 +490,132 @@ extension View {
     }
 }
 
-// MARK: - Delete dissolve
+// MARK: - Delete motion (shared by every delete in the app)
 
-enum DeleteMotion {
-    /// The dissolve itself (scale down, blur, brighten, fade).
-    static let dissolve = Animation.easeIn(duration: 0.28)
-    static let dissolveNanoseconds: UInt64 = 280_000_000
+/// Where a row is in the delete sequence. `nil` = resting.
+enum DeletePhase: Equatable {
+    /// Quick confirmation: scaled down to 0.96.
+    case pressed
+    /// Sliding out toward the swipe direction while fading (opacity only, no blur).
+    case leaving
 }
 
-extension View {
-    /// Quick dissolve for an item being deleted. Fade only with Reduce Motion.
-    func dissolving(_ active: Bool) -> some View {
-        modifier(Dissolve(active: active))
+enum DeleteMotion {
+    static let press = Animation.spring(response: 0.18, dampingFraction: 0.8)
+    static let leave = Animation.easeIn(duration: 0.22)
+    /// The removed row's height collapses and the rows below move up.
+    static let collapse = Animation.spring(response: 0.4, dampingFraction: 0.85)
+    static let pressNanoseconds: UInt64 = 110_000_000
+    static let leaveNanoseconds: UInt64 = 220_000_000
+    /// How long a pushed detail screen takes to pop before its row is removed in the list.
+    static let popNanoseconds: UInt64 = 420_000_000
+    /// How far the row slides while fading.
+    static let slideDistance: CGFloat = 140
+
+    /// Press → slide/fade → remove (with the collapse spring) ≈ 0.45 s in total, then reset.
+    /// `setPhase` drives `.deleteExit(_:)`; `remove` must take the item out of the data source.
+    /// Reduce Motion: fades only.
+    @MainActor
+    static func run(reduceMotion: Bool, setPhase: @escaping (DeletePhase?) -> Void, remove: @escaping () -> Void) {
+        Haptics.impact(.light)
+        if !reduceMotion {
+            withAnimation(press) { setPhase(.pressed) }
+        }
+        Task { @MainActor in
+            if !reduceMotion { try? await Task.sleep(nanoseconds: pressNanoseconds) }
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : leave) { setPhase(.leaving) }
+            try? await Task.sleep(nanoseconds: leaveNanoseconds)
+            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : collapse) { remove() }
+            // Keep the removed row invisible until its collapse has finished (a List keeps drawing
+            // the old cell during its delete animation), then forget the phase.
+            try? await Task.sleep(nanoseconds: 650_000_000)
+            var reset = Transaction()
+            reset.disablesAnimations = true
+            withTransaction(reset) { setPhase(nil) }
+        }
     }
 }
 
-private struct Dissolve: ViewModifier {
-    let active: Bool
+extension View {
+    /// The shared delete look: keeps its rounded corners the whole way, scales to 0.96, then slides
+    /// toward `edge` while fading. Apply the same phase to a List row's content AND its row background.
+    func deleteExit(_ phase: DeletePhase?, edge: HorizontalEdge = .leading,
+                    cornerRadius: CGFloat = Radius.md, clip: Bool = true) -> some View {
+        modifier(DeleteExit(phase: phase, edge: edge, cornerRadius: cornerRadius, clip: clip))
+    }
+}
+
+private struct DeleteExit: ViewModifier {
+    let phase: DeletePhase?
+    let edge: HorizontalEdge
+    let cornerRadius: CGFloat
+    let clip: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
-        let motion = active && !reduceMotion
+        let moving = phase != nil && !reduceMotion
+        let direction: CGFloat = edge == .leading ? -1 : 1
         content
-            .scaleEffect(motion ? 0.92 : 1)
-            .blur(radius: motion ? 8 : 0)
-            .brightness(motion ? 0.12 : 0)
-            .opacity(active ? 0 : 1)
-            .allowsHitTesting(!active)
+            .clipShape(DeleteClipShape(active: clip && phase != nil, cornerRadius: cornerRadius))
+            .scaleEffect(moving ? 0.96 : 1)
+            .offset(x: moving && phase == .leaving ? direction * DeleteMotion.slideDistance : 0)
+            .opacity(phase == .leaving ? 0 : 1)
+            .allowsHitTesting(phase == nil)
+    }
+}
+
+extension View {
+    /// Empty states appear after a deleted last item is gone: fade in and scale 0.96 → 1 after 0.15 s,
+    /// so the two never overlap. Fade only with Reduce Motion.
+    func emptyStateEntrance() -> some View {
+        modifier(EmptyStateEntrance())
+    }
+}
+
+private struct EmptyStateEntrance: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .scaleEffect(shown || reduceMotion ? 1 : 0.96)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.3).delay(0.15)) { shown = true }
+            }
+    }
+}
+
+/// Rounded clip while a delete plays; effectively no clip at rest (shadows and glows stay intact).
+private struct DeleteClipShape: Shape {
+    let active: Bool
+    let cornerRadius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        active
+            ? RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).path(in: rect)
+            : Rectangle().path(in: rect.insetBy(dx: -2000, dy: -2000))
+    }
+}
+
+/// Lets a detail screen pop back first and then have its row removed, with the row animation,
+/// by whichever list shows that item. Falls back to a plain removal if no list claims it.
+@MainActor
+final class RowDeleteRequests: ObservableObject {
+    static let shared = RowDeleteRequests()
+    @Published private(set) var requested: Set<UUID> = []
+
+    func request(_ id: UUID, fallback: @escaping () -> Void) {
+        requested.insert(id)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: DeleteMotion.popNanoseconds + 600_000_000)
+            if self.requested.remove(id) != nil { fallback() }
+        }
+    }
+
+    /// The list showing the item takes the request (returns false if someone else already did).
+    func claim(_ id: UUID) -> Bool {
+        requested.remove(id) != nil
     }
 }
 

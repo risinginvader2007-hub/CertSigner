@@ -58,8 +58,9 @@ struct LibraryView: View {
     @State private var path: [UUID] = []
     @State private var installTarget: SignedApp?
     @State private var logTarget: LogTarget?
-    /// Rows currently playing the delete dissolve.
-    @State private var deleting: Set<UUID> = []
+    /// Rows currently playing the shared delete animation.
+    @State private var deletePhases: [UUID: DeletePhase] = [:]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var zoom
 
     private var visibleApps: [SignedApp] {
@@ -111,6 +112,7 @@ struct LibraryView: View {
                             actionTitle: "Go to Home",
                             action: { withAnimation(Theme.spring) { router.tab = .home } }
                         )
+                        .emptyStateEntrance()
                         .listRowBackground(Color.clear)
                     }
                 } else {
@@ -124,7 +126,7 @@ struct LibraryView: View {
             .scrollContentBackground(.hidden)
             .background(AuroraBackground(intensity: 0.55))
             .animation(Theme.spring, value: queue.tasks.map(\.id))
-            .animation(Theme.spring, value: apps.map(\.id))
+            .animation(DeleteMotion.collapse, value: apps.map(\.id))
             .librarySearchable(text: $search)
             .refreshable { await reload() }
             .navigationTitle("Library")
@@ -139,6 +141,17 @@ struct LibraryView: View {
             .sheet(item: $logTarget) { target in
                 SigningLogSheet(taskID: target.id).sheetChrome()
             }
+            // Delete from the detail screen: it pops first, then the row leaves here.
+            .onReceive(RowDeleteRequests.shared.$requested) { ids in
+                for id in ids where signedApps.apps.contains(where: { $0.id == id }) {
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: DeleteMotion.popNanoseconds)
+                        guard let app = signedApps.apps.first(where: { $0.id == id }),
+                              RowDeleteRequests.shared.claim(id) else { return }
+                        animatedDelete(app)
+                    }
+                }
+            }
         }
     }
 
@@ -147,22 +160,35 @@ struct LibraryView: View {
         signedApps.load()
     }
 
-    private func delete(_ app: SignedApp) {
-        withAnimation(Theme.spring) { signedApps.delete(app) }
+    /// Removes the app from the list (inside the collapse animation) and shows "Deleted <app>" with Undo.
+    static func deleteWithUndo(_ app: SignedApp, signedApps: SignedAppsStore, toasts: ToastCenter) {
+        let pending = signedApps.removeForUndo(app)
         Haptics.success()
-        toasts.show("Deleted \(app.name)", kind: .success)
+        toasts.show(
+            "Deleted \(app.name)", kind: .success, actionTitle: "Undo", duration: 5,
+            action: {
+                guard let pending else { return }
+                withAnimation(DeleteMotion.collapse) { signedApps.restore(pending) }
+                Haptics.impact(.light)
+            },
+            onExpire: {
+                if let pending { signedApps.finalizeDeletion(pending) }
+            }
+        )
     }
 
-    /// No confirmation: dissolve the row, then run the unchanged delete; the rest slide up with a spring.
-    private func dissolveDelete(_ app: SignedApp) {
-        guard !deleting.contains(app.id) else { return }
-        Haptics.impact(.light)
-        withAnimation(DeleteMotion.dissolve) { _ = deleting.insert(app.id) }
-        Task {
-            try? await Task.sleep(nanoseconds: DeleteMotion.dissolveNanoseconds)
-            delete(app)
-            deleting.remove(app.id)
+    /// No confirmation: the shared delete animation plays, then the app leaves the list.
+    private func animatedDelete(_ app: SignedApp) {
+        guard deletePhases[app.id] == nil else { return }
+        DeleteMotion.run(reduceMotion: reduceMotion, setPhase: { deletePhases[app.id] = $0 }) {
+            Self.deleteWithUndo(app, signedApps: signedApps, toasts: toasts)
         }
+    }
+
+    /// The last signed app is leaving: the "Signed Apps" header fades out with it.
+    private var lastSignedAppLeaving: Bool {
+        !deletePhases.isEmpty && queue.tasks.isEmpty
+            && signedApps.apps.allSatisfy { deletePhases[$0.id] == .leaving }
     }
 
     // MARK: Signing
@@ -218,6 +244,7 @@ struct LibraryView: View {
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .padding(.vertical, 8)
+                        .emptyStateEntrance()
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "magnifyingglass").font(.title2).foregroundColor(.secondary)
@@ -240,13 +267,13 @@ struct LibraryView: View {
                         onInstall: { installTarget = app },
                         onResign: { resign(app) }
                     )
-                    .dissolving(deleting.contains(app.id))
+                    .deleteExit(deletePhases[app.id])
                     .zoomSource(id: app.id, in: zoom)
-                    .listRowBackground(RowSurface())
+                    .listRowBackground(RowSurface().deleteExit(deletePhases[app.id]))
                     .swipeActions(edge: .trailing) {
                         // Not `role: .destructive`: that makes List remove the row itself before the dissolve plays.
                         Button {
-                            dissolveDelete(app)
+                            animatedDelete(app)
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
@@ -272,6 +299,7 @@ struct LibraryView: View {
                         .monospacedDigit()
                 }
             }
+            .opacity(lastSignedAppLeaving ? 0 : 1)
         }
     }
 

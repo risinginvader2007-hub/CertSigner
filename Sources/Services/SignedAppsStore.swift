@@ -14,6 +14,9 @@ final class SignedAppsStore: ObservableObject {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         root = documents.appendingPathComponent("Signed", isDirectory: true)
         try? fm.createDirectory(at: root, withIntermediateDirectories: true)
+        // Deletions whose Undo window was still open when the app quit: finish them now.
+        for id in Self.pendingDeleteIDs { try? fm.removeItem(at: folder(for: id)) }
+        Self.pendingDeleteIDs = []
         load()
     }
 
@@ -84,5 +87,50 @@ final class SignedAppsStore: ObservableObject {
         apps.removeAll { $0.id == app.id }
         icons[app.id] = nil
         save()
+    }
+
+    // MARK: Delete with Undo
+
+    /// An app taken out of the list whose files are kept until the Undo window closes.
+    struct PendingDeletion {
+        let app: SignedApp
+        let index: Int
+        let icon: UIImage?
+    }
+
+    /// Removes the app from the list and index right away (so a stale card can never come back),
+    /// keeping its signed files until `finalizeDeletion` (or `restore` on Undo).
+    @discardableResult
+    func removeForUndo(_ app: SignedApp) -> PendingDeletion? {
+        guard let index = apps.firstIndex(where: { $0.id == app.id }) else { return nil }
+        let pending = PendingDeletion(app: apps[index], index: index, icon: icons[app.id])
+        apps.remove(at: index)
+        icons[app.id] = nil
+        save()
+        Self.pendingDeleteIDs.append(app.id)
+        return pending
+    }
+
+    /// Undo: put the app back where it was.
+    func restore(_ pending: PendingDeletion) {
+        guard !apps.contains(where: { $0.id == pending.app.id }),
+              fm.fileExists(atPath: ipaURL(for: pending.app).path) else { return }
+        apps.insert(pending.app, at: min(pending.index, apps.count))
+        icons[pending.app.id] = pending.icon
+        save()
+        Self.pendingDeleteIDs.removeAll { $0 == pending.app.id }
+    }
+
+    /// The Undo window closed: delete the files for good (same removal as `delete`).
+    func finalizeDeletion(_ pending: PendingDeletion) {
+        Self.pendingDeleteIDs.removeAll { $0 == pending.app.id }
+        guard !apps.contains(where: { $0.id == pending.app.id }) else { return }
+        try? fm.removeItem(at: folder(for: pending.app.id))
+    }
+
+    private static let pendingKey = "signed.pendingDeletes"
+    private static var pendingDeleteIDs: [UUID] {
+        get { (UserDefaults.standard.stringArray(forKey: pendingKey) ?? []).compactMap(UUID.init(uuidString:)) }
+        set { UserDefaults.standard.set(newValue.map(\.uuidString), forKey: pendingKey) }
     }
 }

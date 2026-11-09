@@ -4,6 +4,17 @@ import SwiftUI
 struct SourcesView: View {
     @EnvironmentObject private var store: RepositoryStore
     @State private var showAdd = false
+    /// Rows currently playing the shared delete animation.
+    @State private var deletePhases: [UUID: DeletePhase] = [:]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// No confirmation: the shared delete animation plays, then the unchanged removal runs.
+    private func animatedRemove(_ id: UUID) {
+        guard deletePhases[id] == nil else { return }
+        DeleteMotion.run(reduceMotion: reduceMotion, setPhase: { deletePhases[id] = $0 }) {
+            store.remove(id)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -18,6 +29,7 @@ struct SourcesView: View {
                             actionTitle: "Add Source",
                             action: { showAdd = true }
                         )
+                        .emptyStateEntrance()
                         .listRowBackground(Color.clear)
                     }
                 } else {
@@ -51,12 +63,17 @@ struct SourcesView: View {
                                     store.startRefresh(repo.id)
                                 }
                             }
+                            .deleteExit(deletePhases[repo.id])
+                            // Same colour as the default row background, animated with the row.
+                            .listRowBackground(Color(.secondarySystemGroupedBackground).deleteExit(deletePhases[repo.id]))
                             .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    store.remove(repo.id)
+                                // Not `role: .destructive`: that makes List remove the row before the animation plays.
+                                Button {
+                                    animatedRemove(repo.id)
                                 } label: {
                                     Label("Remove", systemImage: "trash")
                                 }
+                                .tint(Theme.danger)
                             }
                             .swipeActions(edge: .leading) {
                                 Button {
@@ -78,7 +95,7 @@ struct SourcesView: View {
                                     Label("Copy Source URL", systemImage: "doc.on.doc")
                                 }
                                 Button(role: .destructive) {
-                                    store.remove(repo.id)
+                                    animatedRemove(repo.id)
                                 } label: {
                                     Label("Remove Source", systemImage: "trash")
                                 }

@@ -6,6 +6,8 @@ struct Toast: Identifiable, Equatable {
     let id = UUID()
     let kind: Kind
     let message: String
+    /// Optional trailing button (e.g. "Undo").
+    var actionTitle: String? = nil
 
     var systemImage: String {
         switch kind {
@@ -30,32 +32,62 @@ struct Toast: Identifiable, Equatable {
 final class ToastCenter: ObservableObject {
     @Published private(set) var current: Toast?
     private var dismissTask: Task<Void, Never>?
+    private var action: (() -> Void)?
+    /// Runs once when the current toast goes away without its action being tapped
+    /// (timed out, swiped away, or replaced by another toast).
+    private var onExpire: (() -> Void)?
 
-    func show(_ message: String, kind: Toast.Kind = .info) {
+    /// Plain toasts show for 2.5 s. A toast with an action (e.g. Undo) stays for `duration`.
+    func show(_ message: String, kind: Toast.Kind = .info, actionTitle: String? = nil,
+              duration: TimeInterval? = nil, action: (() -> Void)? = nil, onExpire: (() -> Void)? = nil) {
         switch kind {
         case .success: Haptics.success()
         case .error: Haptics.error()
         case .warning: Haptics.warning()
         case .info: Haptics.impact(.light)
         }
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
-            current = Toast(kind: kind, message: message)
+        expirePrevious()
+        self.action = action
+        self.onExpire = onExpire
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
+            current = Toast(kind: kind, message: message, actionTitle: action == nil ? nil : actionTitle)
         }
         dismissTask?.cancel()
+        let seconds = duration ?? 2.5
         dismissTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 2_800_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             if Task.isCancelled { return }
             self?.dismiss()
         }
     }
 
     func dismiss() {
-        withAnimation(.easeInOut(duration: 0.25)) { current = nil }
+        dismissTask?.cancel()
+        expirePrevious()
+        withAnimation(.easeIn(duration: 0.25)) { current = nil }
+    }
+
+    /// The toast's button was tapped: run the action instead of the expiry.
+    func performAction() {
+        let action = self.action
+        self.action = nil
+        onExpire = nil
+        dismissTask?.cancel()
+        withAnimation(.easeIn(duration: 0.25)) { current = nil }
+        action?()
+    }
+
+    private func expirePrevious() {
+        let expire = onExpire
+        onExpire = nil
+        action = nil
+        expire?()
     }
 }
 
 struct ToastView: View {
     let toast: Toast
+    var onAction: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 10) {
@@ -69,6 +101,19 @@ struct ToastView: View {
                 .foregroundColor(.primary)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
+            if let title = toast.actionTitle {
+                Button(action: onAction) {
+                    Text(title)
+                        .font(.subheadline.weight(.bold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(Color.primary.opacity(0.1)))
+                        .clipShape(Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(PressableButtonStyle(scale: 0.94))
+                .accessibilityLabel(title)
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
@@ -93,13 +138,13 @@ struct ToastHost: ViewModifier {
     func body(content: Content) -> some View {
         content.overlay(alignment: .top) {
             if let toast = center.current {
-                ToastView(toast: toast)
+                ToastView(toast: toast, onAction: { center.performAction() })
                     .id(toast.id)
-                    .padding(.top, 6)
+                    // Below the navigation bar's button row, so it never covers Back / toolbar buttons.
+                    .padding(.top, 50)
                     .offset(y: min(0, drag) + max(0, drag) * 0.15) // rubber-band when pulled down
                     .opacity(1 + Double(min(0, drag)) / 120)
-                    .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .scale(scale: 0.9)).combined(with: .opacity),
-                                            removal: .move(edge: .top).combined(with: .opacity)))
+                    .transition(.move(edge: .top).combined(with: .opacity))
                     .onTapGesture { center.dismiss() }
                     .gesture(
                         DragGesture(minimumDistance: 6)
@@ -111,7 +156,7 @@ struct ToastHost: ViewModifier {
                                 withAnimation(Motion.snappy) { drag = 0 }
                             }
                     )
-                    .accessibilityHint("Tap or swipe up to dismiss")
+                    .accessibilityHint(toast.actionTitle == nil ? "Tap or swipe up to dismiss" : "Swipe up to dismiss")
                     .zIndex(1)
             }
         }

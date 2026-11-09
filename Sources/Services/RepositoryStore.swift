@@ -109,7 +109,7 @@ final class RepositoryStore: ObservableObject {
         guard let index = repositories.firstIndex(where: { $0.id == id }) else { return }
         let repo = repositories[index]
         for app in repo.apps { cancelDownload(repoID: id, app: app) }
-        withAnimation(Theme.spring) { _ = repositories.remove(at: index) }
+        withAnimation(DeleteMotion.collapse) { _ = repositories.remove(at: index) }
         save()
         AppLog.info("Removed source \(repo.name)")
     }
