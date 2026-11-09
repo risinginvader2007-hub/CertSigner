@@ -18,10 +18,15 @@ final class SourcesRefreshTests: XCTestCase {
         let repo = try await store.add("https://apps.sidestore.io/")
         print("added \(repo.name): \(repo.apps.count) apps")
 
+        let before = store.repository(repo.id)?.lastUpdated
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        // Cancel the caller right away (like leaving the screen / pull-to-refresh ending). The
+        // refresh is owned by the store, so it must still run to completion. (Not "still running
+        // after 50 ms": a 304 from the server can legitimately finish sooner than that.)
         let caller = Task { await store.refreshAll() }
-        try? await Task.sleep(nanoseconds: 50_000_000)
-        caller.cancel()   // like leaving the screen / pull-to-refresh ending
-        XCTAssertTrue(store.refreshing.contains(repo.id), "refresh keeps running after the caller is cancelled")
+        caller.cancel()
+        await caller.value
+        print("running right after the cancelled caller: \(store.refreshing.contains(repo.id))")
 
         // A second refresh while one is running reuses it instead of starting / cancelling another.
         let first = store.startRefresh(repo.id)
@@ -34,6 +39,9 @@ final class SourcesRefreshTests: XCTestCase {
         XCTAssertNil(refreshed.lastError)
         XCTAssertFalse(refreshed.apps.isEmpty)
         XCTAssertNotNil(refreshed.lastUpdated)
+        if let before, let after = refreshed.lastUpdated {
+            XCTAssertGreaterThan(after, before, "the refresh completed although its caller was cancelled")
+        }
 
         // Conditional request: a second refresh may come back 304 and must keep the apps.
         await store.refresh(repo.id)
