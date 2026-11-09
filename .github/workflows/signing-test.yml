@@ -43,6 +43,8 @@ jobs:
             codesign -dvv "$item" 2>&1 | grep -E "^(Identifier|Authority|TeamIdentifier|CodeDirectory)" || { echo "NOT SIGNED: $item"; exit 1; }
           done
           echo "=== embedded profiles ==="; find Payload -name embedded.mobileprovision
-      - name: Strict log (expected to stop at the mismatch)
+      - name: Signing logs (always)
         if: always()
-        run: cat "$RUNNER_TEMP/fixtures/strict.ipa.log" || true
+        run: |
+          echo "=== Compatibility log ==="; cat "$RUNNER_TEMP/fixtures/compat.ipa.log" || true
+          echo; echo "=== Strict log (expected to stop at the mismatch) ==="; cat "$RUNNER_TEMP/fixtures/strict.ipa.log" || true
