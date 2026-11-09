@@ -21,8 +21,11 @@ jobs:
           echo "Simulator: $UDID"
           TEST_RUNNER_CS_FIXTURES="$RUNNER_TEMP/fixtures" xcodebuild test \
             -project CertSigner.xcodeproj -scheme SigningTests -destination "id=$UDID" \
-            -derivedDataPath build CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO 2>&1 | tail -n 60
-          exit ${PIPESTATUS[0]}
+            -derivedDataPath build CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO 2>&1 | tee "$RUNNER_TEMP/test.log" | tail -n 60
+          status=${PIPESTATUS[0]}
+          echo "=== every test result and measurement ==="
+          grep -E "Test Case .*(passed|failed)|PERF |theme fade|: error:" "$RUNNER_TEMP/test.log" || true
+          exit $status
       - name: Inspect the signed IPA (Compatibility)
         run: |
           set -e
