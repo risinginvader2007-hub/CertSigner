@@ -9,11 +9,14 @@ struct InstallSettingsView: View {
         Form {
             Group {
             Section {
-                Picker("Method", selection: $method) {
-                    ForEach(InstallMethod.allCases) { option in
-                        Text(option.title).tag(option)
-                    }
-                }
+                SlidingSegmentedControl(
+                    selection: $method,
+                    options: InstallMethod.allCases.map { .init(value: $0, title: $0.shortTitle) },
+                    accessibilityTitle: "Install method"
+                )
+                .padding(.vertical, Space.x1)
+                Text(method.title)
+                    .font(TypeScale.subheadline.weight(.semibold))
             } header: {
                 Text("Install Method")
             } footer: {

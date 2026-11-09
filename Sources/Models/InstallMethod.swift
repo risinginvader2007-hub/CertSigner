@@ -18,6 +18,15 @@ enum InstallMethod: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Fits a 3-segment control on the smallest iPhone.
+    var shortTitle: String {
+        switch self {
+        case .automatic: return "Automatic"
+        case .localHTTPS: return "Local"
+        case .semiLocal: return "Semi-Local"
+        }
+    }
+
     var detail: String {
         switch self {
         case .automatic:

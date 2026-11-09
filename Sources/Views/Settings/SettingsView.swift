@@ -355,41 +355,61 @@ struct SettingsView: View {
     }
 }
 
+/// Accent swatches. One selection ring slides from the old swatch to the new one
+/// (matchedGeometryEffect follower driven by local state, so it animates with @AppStorage too).
 struct AccentPicker: View {
     @Binding var selection: AccentOption
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var namespace
+    @State private var shown: AccentOption?
+
+    private var current: AccentOption { shown ?? selection }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Space.x3) {
                 ForEach(AccentOption.allCases) { option in
+                    let selected = current == option
                     Button {
-                        withAnimation(Theme.bouncy) { selection = option }
+                        guard option != selection else { return }
                         Haptics.selection()
+                        withAnimation(reduceMotion ? Motion.fade : Motion.selection) {
+                            shown = option
+                            selection = option
+                        }
                     } label: {
                         ZStack {
                             Circle()
                                 .fill(LinearGradient(colors: option.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
                                 .frame(width: 32, height: 32)
-                            Circle()
-                                .strokeBorder(option.color, lineWidth: 2.5)
-                                .frame(width: 42, height: 42)
-                                .opacity(selection == option ? 1 : 0)
-                                .scaleEffect(selection == option ? 1 : 0.7)
-                            if selection == option {
-                                Image(systemName: "checkmark")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundColor(.white)
-                                    .transition(.scale)
-                            }
+                            Image(systemName: "checkmark")
+                                .font(.caption.weight(.bold))
+                                .foregroundColor(.white)
+                                .scaleEffect(selected ? 1 : 0.4)
+                                .opacity(selected ? 1 : 0)
                         }
                         .frame(width: 44, height: 44)
+                        .background(
+                            Circle().fill(Color.clear).frame(width: 42, height: 42)
+                                .matchedGeometryEffect(id: option, in: namespace, properties: .frame, isSource: true)
+                        )
                     }
                     .buttonStyle(PressableButtonStyle(scale: 0.85))
                     .accessibilityLabel(option.title)
-                    .accessibilityAddTraits(selection == option ? .isSelected : [])
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
+            .background {
+                Circle()
+                    .strokeBorder(current.color, lineWidth: 2.5)
+                    .matchedGeometryEffect(id: current, in: namespace, properties: .frame, isSource: false)
+            }
             .padding(.vertical, Space.hair)
+        }
+        .onChange(of: selection) { newValue in
+            guard shown != newValue else { return }
+            withAnimation(reduceMotion ? Motion.fade : Motion.selection) { shown = newValue }
         }
     }
 }
@@ -414,7 +434,11 @@ struct AppIconPicker: View {
     @EnvironmentObject private var toasts: ToastCenter
     @Environment(\.themeAccent) private var accent
     @Environment(\.themeGradient) private var gradient
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var ringSpace
     @State private var current: String?
+    /// The ring only animates for real changes, not when the current icon is first read.
+    @State private var ready = false
 
     private var currentOption: Option {
         options.first { $0.iconName == current } ?? options[0]
@@ -442,7 +466,10 @@ struct AppIconPicker: View {
             .accessibilityLabel("Current icon: \(currentOption.title)")
             picker
         }
-        .onAppear { current = UIApplication.shared.alternateIconName }
+        .onAppear {
+            current = UIApplication.shared.alternateIconName
+            DispatchQueue.main.async { ready = true }
+        }
     }
 
     private var picker: some View {
@@ -458,11 +485,12 @@ struct AppIconPicker: View {
                                 .resizable()
                                 .frame(width: 58, height: 58)
                                 .clipShape(RoundedRectangle(cornerRadius: Radius.sm, style: .continuous))
-                                .overlay(
+                                .background(
+                                    // Where the single sliding ring sits when this icon is selected.
                                     RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
-                                        .strokeBorder(LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing),
-                                                      lineWidth: selected ? 3 : 0)
+                                        .fill(Color.clear)
                                         .padding(-4)
+                                        .matchedGeometryEffect(id: option.id, in: ringSpace, properties: .frame, isSource: true)
                                 )
                                 .scaleEffect(selected ? 1.04 : 1)
                             Text(option.title)
@@ -476,8 +504,14 @@ struct AppIconPicker: View {
                     .accessibilityAddTraits(selected ? .isSelected : [])
                 }
             }
+            .background {
+                RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                    .strokeBorder(LinearGradient(colors: gradient, startPoint: .topLeading, endPoint: .bottomTrailing),
+                                  lineWidth: 3)
+                    .matchedGeometryEffect(id: currentOption.id, in: ringSpace, properties: .frame, isSource: false)
+            }
             .padding(.vertical, Space.x1)
-            .animation(Theme.bouncy, value: current)
+            .animation(ready ? (reduceMotion ? Motion.fade : Motion.selection) : nil, value: current)
         }
     }
 

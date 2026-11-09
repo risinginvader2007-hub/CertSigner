@@ -5,6 +5,22 @@ enum SignedSort: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var shortTitle: String {
+        switch self {
+        case .date: return "Date"
+        case .name: return "Name"
+        case .expiry: return "Expiry"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .date: return "calendar"
+        case .name: return "textformat"
+        case .expiry: return "hourglass"
+        }
+    }
+
     var title: String {
         switch self {
         case .date: return "Date Signed"
@@ -18,6 +34,16 @@ enum StatusFilter: String, CaseIterable, Identifiable {
     case all, valid, expiring, expired
 
     var id: String { rawValue }
+
+    /// Fits a 4-segment control.
+    var shortTitle: String {
+        switch self {
+        case .all: return "All"
+        case .valid: return "Valid"
+        case .expiring: return "Expiring"
+        case .expired: return "Expired"
+        }
+    }
 
     var title: String {
         switch self {
@@ -55,6 +81,7 @@ struct LibraryView: View {
     @State private var statusFilter: StatusFilter = .all
     @State private var certificateFilter: UUID?
     @State private var search = ""
+    @State private var showFilters = false
     @State private var path: [UUID] = []
     @State private var installTarget: SignedApp?
     @State private var logTarget: LogTarget?
@@ -326,27 +353,9 @@ struct LibraryView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .navigationBarTrailing) {
-            Menu {
-                Picker("Sort by", selection: $sort.animation(Theme.spring)) {
-                    ForEach(SignedSort.allCases) { Text($0.title).tag($0) }
-                }
-                Picker("Status", selection: $statusFilter.animation(Theme.spring)) {
-                    ForEach(StatusFilter.allCases) { Text($0.title).tag($0) }
-                }
-                if !certificateChoices.isEmpty {
-                    Picker("Certificate", selection: $certificateFilter.animation(Theme.spring)) {
-                        Text("All Certificates").tag(UUID?.none)
-                        ForEach(certificateChoices) { choice in
-                            Text(choice.name).tag(Optional(choice.id))
-                        }
-                    }
-                }
-                if isFiltering {
-                    Divider()
-                    Button(role: .destructive) { clearFilters() } label: {
-                        Label("Clear Filters", systemImage: "xmark.circle")
-                    }
-                }
+            // Sort & filter sheet (sliding segmented controls) instead of a system menu.
+            Button {
+                showFilters = true
             } label: {
                 Image(systemName: "line.3.horizontal.decrease")
                     .font(.body.weight(.semibold))
@@ -356,6 +365,18 @@ struct LibraryView: View {
                     .glassIconButton()
                     .clipShape(Circle())
                     .contentShape(Circle())
+            }
+            .buttonStyle(PressableButtonStyle(scale: 0.9))
+            .sheet(isPresented: $showFilters) {
+                LibraryFilterSheet(
+                    sort: $sort,
+                    statusFilter: $statusFilter,
+                    certificateFilter: $certificateFilter,
+                    certificates: certificateChoices.map { ($0.id, $0.name) },
+                    isFiltering: isFiltering,
+                    onClear: clearFilters
+                )
+                .sheetChrome()
             }
             .accessibilityLabel("Sort and filter")
         }
@@ -678,5 +699,101 @@ private struct ObservedSigningProgress: View {
         )
         .onAppear { if let url = job.logFileURL { onLogSaved(url) } }
         .onChange(of: job.logFileURL) { url in if let url { onLogSaved(url) } }
+    }
+}
+
+
+/// Library "Sort & Filter": sliding segmented controls for sort and status, a certificate list
+/// whose checkmark springs in, and Clear Filters. Same bindings and stored settings as before.
+struct LibraryFilterSheet: View {
+    @Binding var sort: SignedSort
+    @Binding var statusFilter: StatusFilter
+    @Binding var certificateFilter: UUID?
+    let certificates: [(id: UUID, name: String)]
+    let isFiltering: Bool
+    let onClear: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.themeAccent) private var accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.x5) {
+                    VStack(alignment: .leading, spacing: Space.x2) {
+                        SectionHeader("Sort by")
+                        SlidingSegmentedControl(
+                            selection: $sort,
+                            options: SignedSort.allCases.map { .init(value: $0, title: $0.shortTitle, systemImage: $0.systemImage) },
+                            accessibilityTitle: "Sort by"
+                        )
+                    }
+                    VStack(alignment: .leading, spacing: Space.x2) {
+                        SectionHeader("Status")
+                        SlidingSegmentedControl(
+                            selection: $statusFilter,
+                            options: StatusFilter.allCases.map { .init(value: $0, title: $0.shortTitle) },
+                            accessibilityTitle: "Status"
+                        )
+                    }
+                    if !certificates.isEmpty {
+                        VStack(alignment: .leading, spacing: Space.x2) {
+                            SectionHeader("Certificate")
+                            VStack(spacing: 0) {
+                                certificateRow(id: nil, name: "All Certificates")
+                                ForEach(certificates, id: \.id) { item in
+                                    SoftDivider()
+                                    certificateRow(id: item.id, name: item.name)
+                                }
+                            }
+                            .padding(.horizontal, Space.x4)
+                            .cardBackground(cornerRadius: Radius.md)
+                        }
+                    }
+                    if isFiltering {
+                        PrimaryButton(title: "Clear Filters", systemImage: "xmark.circle", style: .tinted) {
+                            onClear()
+                            dismiss()
+                        }
+                    }
+                }
+                .padding(Theme.padding)
+            }
+            .navigationTitle("Sort & Filter")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func certificateRow(id: UUID?, name: String) -> some View {
+        let selected = certificateFilter == id
+        return Button {
+            Haptics.selection()
+            withAnimation(Motion.smooth) { certificateFilter = id }
+        } label: {
+            HStack {
+                Text(name)
+                    .foregroundColor(SemanticColor.textPrimary)
+                    .identifierText(minimumScale: 0.85)
+                Spacer(minLength: Space.x2)
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.bold))
+                    .foregroundColor(accent)
+                    .scaleEffect(selected ? 1 : 0.3)
+                    .opacity(selected ? 1 : 0)
+                    .animation(reduceMotion ? Motion.fade : Motion.bouncy, value: selected)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.98))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

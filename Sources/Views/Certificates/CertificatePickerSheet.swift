@@ -86,6 +86,8 @@ struct CertificatePickerSheet: View {
     @EnvironmentObject private var certificates: CertificateStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.themeAccent) private var accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var picked: UUID?
 
     var body: some View {
         NavigationStack {
@@ -110,11 +112,16 @@ struct CertificatePickerSheet: View {
     }
 
     private func row(_ certificate: Certificate) -> some View {
-        let selected = certificate.id == selectedID
+        let selected = certificate.id == (picked ?? selectedID)
         return Button {
             Haptics.impact(.light)
+            picked = certificate.id
             onSelect(certificate.id)
-            dismiss()
+            // Let the checkmark spring in before the sheet closes.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 260_000_000)
+                dismiss()
+            }
         } label: {
             HStack(spacing: Space.x3) {
                 CertificateGlyph(seed: certificate.nickname, size: 38)
@@ -138,7 +145,9 @@ struct CertificatePickerSheet: View {
                 Image(systemName: "checkmark")
                     .font(.body.weight(.bold))
                     .foregroundColor(accent)
+                    .scaleEffect(selected ? 1 : 0.3)
                     .opacity(selected ? 1 : 0)
+                    .animation(reduceMotion ? Motion.fade : Motion.bouncy, value: selected)
             }
             .padding(.horizontal, Space.x4)
             .padding(.vertical, Space.x3)

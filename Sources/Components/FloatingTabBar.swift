@@ -39,6 +39,7 @@ struct FloatingTabBar: View {
 
     @Environment(\.themeAccent) private var accent
     @Environment(\.themeGradient) private var gradient
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var namespace
 
     var body: some View {
@@ -47,6 +48,18 @@ struct FloatingTabBar: View {
                 item(tab)
             }
         }
+        .background {
+            // ONE pill that slides from tab to tab (gradient-tinted glass, lit edge, soft glow).
+            Capsule()
+                .fill(LinearGradient(colors: gradient.map { $0.opacity(0.22) },
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(Capsule().strokeBorder(
+                    LinearGradient(colors: [Color.white.opacity(0.35), accent.opacity(0.25)],
+                                   startPoint: .top, endPoint: .bottom), lineWidth: Border.width))
+                .shadow(color: accent.opacity(0.3), radius: 10, y: 2)
+                .matchedGeometryEffect(id: selection, in: namespace, properties: .frame, isSource: false)
+        }
+        .animation(reduceMotion ? Motion.fade : Motion.selection, value: selection)
         .padding(Space.x2)
         .glassCapsule()
         .padding(.horizontal, Space.x8)
@@ -85,19 +98,10 @@ struct FloatingTabBar: View {
             .foregroundColor(selected ? accent : .secondary)
             .frame(maxWidth: .infinity, minHeight: 44)
             .padding(.vertical, Space.hair)
-            .background {
-                if selected {
-                    // Morphing selection pill: gradient-tinted glass with a lit edge and soft glow.
-                    Capsule()
-                        .fill(LinearGradient(colors: gradient.map { $0.opacity(0.22) },
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .overlay(Capsule().strokeBorder(
-                            LinearGradient(colors: [Color.white.opacity(0.35), accent.opacity(0.25)],
-                                           startPoint: .top, endPoint: .bottom), lineWidth: 1))
-                        .shadow(color: accent.opacity(0.3), radius: 10, y: 2)
-                        .matchedGeometryEffect(id: "selection", in: namespace)
-                }
-            }
+            .background(
+                // Where the single sliding selection pill sits for this tab.
+                Color.clear.matchedGeometryEffect(id: tab, in: namespace, properties: .frame, isSource: true)
+            )
             .contentShape(Capsule())
             .animation(Theme.bouncy, value: badge)
         }
