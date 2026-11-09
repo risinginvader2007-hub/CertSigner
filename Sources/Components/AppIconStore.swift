@@ -5,12 +5,12 @@ import UIKit
 /// the picker's ring moves the moment the user taps (optimistic) and only reverts on an error.
 @MainActor
 final class AppIconStore: ObservableObject {
-    static let shared = AppIconStore()
+    static let shared = AppIconStore(initial: UIApplication.shared.alternateIconName)
 
     /// nil = the primary (Ocean) icon.
     @Published private(set) var selected: String?
 
-    init(initial: String? = UIApplication.shared.alternateIconName) {
+    init(initial: String?) {
         selected = initial
     }
 
