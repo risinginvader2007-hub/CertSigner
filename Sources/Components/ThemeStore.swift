@@ -81,7 +81,7 @@ final class ThemeStore: ObservableObject {
     }
 
     /// Resolve dynamic colours (e.g. `.blue`) for the scheme actually on screen.
-    private static var currentTraits: UITraitCollection {
+    static var currentTraits: UITraitCollection {
         let window = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap(\.windows)

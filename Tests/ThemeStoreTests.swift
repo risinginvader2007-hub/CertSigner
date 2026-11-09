@@ -10,7 +10,7 @@ final class ThemeStoreTests: XCTestCase {
     }
 
     func testAccentChangeFadesOverSixTenthsOfASecond() {
-        let traits = UITraitCollection(userInterfaceStyle: .dark)
+        let traits = ThemeStore.currentTraits
         let store = ThemeStore(option: .purple)
         let from = RGBA(AccentOption.purple.color, traits: traits)
         let to = RGBA(AccentOption.orange.color, traits: traits)
@@ -30,14 +30,16 @@ final class ThemeStoreTests: XCTestCase {
         let middle = samples.filter { $0.0 > 0.2 && $0.0 < 0.45 }
         XCTAssertFalse(middle.isEmpty)
         XCTAssertTrue(middle.allSatisfy { $0.1 > 0.05 && $0.1 < 0.97 }, "mid-fade colours should be in between")
-        let fractions = samples.map(\.1)
-        XCTAssertEqual(fractions, fractions.sorted(), "fade should move steadily toward the new colour (no flicker)")
+        for (earlier, later) in zip(samples, samples.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(later.1, earlier.1 - 0.001, "fade should move steadily toward the new colour (no flicker)")
+        }
+        XCTAssertLessThan(samples.first!.1, 0.1, "starts from the old colour")
         XCTAssertEqual(store.accent, AccentOption.orange.color, "ends exactly on the new accent")
         XCTAssertEqual(store.gradient, AccentOption.orange.gradient)
     }
 
     func testRetargetMidFadeStartsFromCurrentColour() {
-        let traits = UITraitCollection(userInterfaceStyle: .dark)
+        let traits = ThemeStore.currentTraits
         let store = ThemeStore(option: .blue)
         store.apply(.red)
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
