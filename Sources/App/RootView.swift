@@ -15,6 +15,9 @@ struct RootView: View {
     @EnvironmentObject private var queue: SigningQueue
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
     @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .aurora
+    /// Live theme colours: fades every view together when the accent changes.
+    @StateObject private var theme = ThemeStore(option: AccentOption(rawValue: UserDefaults.standard.string(forKey: SettingsKeys.accent) ?? "") ?? .aurora)
+    @Environment(\.scenePhase) private var scenePhase
     /// The animated intro plays once, on first launch.
     @AppStorage("ui.introSeen") private var introSeen = false
 
@@ -29,9 +32,12 @@ struct RootView: View {
                     .zIndex(10)
                 }
             }
-            .tint(accent.color)
-            .environment(\.themeAccent, accent.color)
-            .environment(\.themeGradient, accent.gradient)
+            .tint(theme.accent)
+            .environment(\.themeAccent, theme.accent)
+            .environment(\.themeGradient, theme.gradient)
+            .environmentObject(theme)
+            .onChange(of: accent) { newValue in theme.apply(newValue) }
+            .onChange(of: scenePhase) { phase in AuroraClock.shared.setRunning(phase == .active) }
             .preferredColorScheme(appearance.colorScheme)
             .roundedDesign()
             .modifier(ToastHost(center: toasts))

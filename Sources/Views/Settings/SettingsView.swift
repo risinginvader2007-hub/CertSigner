@@ -13,6 +13,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.autoInstall) private var autoInstall = false
     @AppStorage(SettingsKeys.autoCloseInstall) private var autoCloseInstall = true
     @AppStorage(SettingsKeys.signingMode) private var signingMode: SigningMode = .compatibility
+    @AppStorage(SettingsKeys.backgroundAnimation) private var backgroundAnimation = true
     @AppStorage(SettingsKeys.deleteOriginal) private var deleteOriginal = true
     @AppStorage(SettingsKeys.defaultRemoveExtensions) private var defaultRemoveExtensions = false
     @AppStorage(SettingsKeys.defaultKeepBundleID) private var defaultKeepBundleID = false
@@ -188,6 +189,15 @@ struct SettingsView: View {
                 AccentPicker(selection: $accent)
             }
             .padding(.vertical, 4)
+
+            Toggle(isOn: $backgroundAnimation) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Background animation")
+                    Text("Slowly drifting colour glows behind every screen. Pauses automatically with Reduce Motion; runs at a lower frame rate in Low Power Mode.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("App icon")

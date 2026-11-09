@@ -550,7 +550,9 @@ struct SignedAppListRow: View {
             HStack(spacing: 8) {
                 Button(action: onInstall) {
                     actionLabel("Install", systemImage: "arrow.down.app.fill", filled: true)
+                        .glassShine(in: Capsule())
                 }
+                .buttonStyle(ShinePressStyle(shape: Capsule(), scale: 0.95))
                 Button(action: onResign) {
                     actionLabel("Re-sign", systemImage: "arrow.triangle.2.circlepath", filled: false)
                 }

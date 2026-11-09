@@ -59,12 +59,13 @@ struct PrimaryButton: View {
                         lineWidth: 1
                     )
             )
+            .glassShine(cornerRadius: Radius.md)
             .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
             .ambientGlow(style == .tinted ? .clear : (style == .destructive ? Theme.danger : accent),
                          radius: 14, opacity: isEnabled ? 0.38 : 0)
         }
-        .buttonStyle(PressableButtonStyle(scale: 0.97))
+        .buttonStyle(ShinePressStyle(shape: RoundedRectangle(cornerRadius: Radius.md, style: .continuous), scale: 0.97))
         .opacity(isEnabled ? 1 : 0.45)
         .allowsHitTesting(!isLoading)
         .animation(Theme.spring, value: isLoading)

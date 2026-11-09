@@ -183,52 +183,79 @@ struct AuroraBackground: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.auroraActive) private var active
-    @State private var drift = false
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(SettingsKeys.backgroundAnimation) private var animationEnabled = true
+    @ObservedObject private var power = PowerMonitor.shared
 
-    private var colors: [Color] {
-        let base = gradient.isEmpty ? Theme.signature : gradient
-        return [base[0], base[min(1, base.count - 1)], base[base.count - 1]]
+    /// One blob: its own looping path (a slow figure-eight), speed, size and opacity breathing.
+    private struct Blob {
+        let colorPosition: Double   // where on the theme gradient its colour comes from
+        let size: CGFloat           // × screen width
+        let base: CGPoint           // centre, as a fraction of the screen
+        let amplitude: CGSize       // travel, as a fraction of the screen
+        let period: Double          // seconds per loop (20 – 40 s)
+        let phase: Double
+        let opacity: Double
+    }
+
+    private static let blobs: [Blob] = [
+        Blob(colorPosition: 0, size: 1.25, base: CGPoint(x: 0.12, y: 0.10), amplitude: CGSize(width: 0.20, height: 0.08), period: 26, phase: 0, opacity: 1),
+        Blob(colorPosition: 0.5, size: 1.10, base: CGPoint(x: 0.88, y: 0.16), amplitude: CGSize(width: 0.18, height: 0.10), period: 34, phase: 1.7, opacity: 0.85),
+        Blob(colorPosition: 1, size: 0.95, base: CGPoint(x: 0.55, y: 0.36), amplitude: CGSize(width: 0.24, height: 0.11), period: 21, phase: 3.1, opacity: 0.6),
+        Blob(colorPosition: 0.25, size: 1.05, base: CGPoint(x: 0.30, y: 0.78), amplitude: CGSize(width: 0.22, height: 0.07), period: 39, phase: 4.4, opacity: 0.35)
+    ]
+
+    private var palette: [Color] { gradient.isEmpty ? Theme.signature : gradient }
+
+    private func color(at position: Double) -> Color {
+        let colors = palette
+        let index = Int((position * Double(colors.count - 1)).rounded())
+        return colors[min(max(index, 0), colors.count - 1)]
+    }
+
+    /// Moving only on the visible screen, with the app active, the setting on and Reduce Motion off.
+    /// Otherwise the timeline pauses and the blobs hold still (the static version).
+    private var animating: Bool {
+        active && scenePhase == .active && animationEnabled && !reduceMotion
     }
 
     var body: some View {
         let strength = (scheme == .dark ? 0.30 : 0.16) * intensity
-        GeometryReader { geo in
-            let w = geo.size.width
-            ZStack {
-                Theme.background
-                blob(colors[0], opacity: strength, size: w * 1.25)
-                    .offset(x: drift ? -w * 0.28 : -w * 0.42, y: drift ? -w * 0.42 : -w * 0.55)
-                blob(colors[1], opacity: strength * 0.85, size: w * 1.1)
-                    .offset(x: drift ? w * 0.38 : w * 0.24, y: drift ? -w * 0.30 : -w * 0.48)
-                blob(colors[2], opacity: strength * 0.6, size: w * 0.95)
-                    .offset(x: drift ? w * 0.05 : w * 0.18, y: drift ? -w * 0.05 : -w * 0.18)
+        // Low Power Mode: same motion at 15 fps (the drift is slow, so it still looks smooth).
+        TimelineView(.animation(minimumInterval: power.lowPower ? 1.0 / 15 : 1.0 / 60, paused: !animating)) { context in
+            let time = AuroraClock.shared.time(at: context.date)
+            GeometryReader { geo in
+                let w = geo.size.width
+                let h = geo.size.height
+                ZStack {
+                    Theme.background
+                    ZStack {
+                        ForEach(Self.blobs.indices, id: \.self) { index in
+                            let blob = Self.blobs[index]
+                            let angle = 2 * Double.pi * time / blob.period + blob.phase
+                            let size = w * blob.size * CGFloat(1 + 0.08 * sin(angle + 1.1))
+                            let opacity = strength * blob.opacity * (0.85 + 0.15 * sin(angle + 2.3))
+                            blobView(color(at: blob.colorPosition), opacity: opacity, size: size)
+                                .position(x: w * (blob.base.x + blob.amplitude.width * CGFloat(sin(angle))),
+                                          y: h * (blob.base.y + blob.amplitude.height * CGFloat(sin(2 * angle + blob.phase))))
+                        }
+                    }
+                    .frame(width: w, height: h)
+                    .drawingGroup()
+                }
+                .frame(width: w, height: h)
             }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .onAppear { updateDrift() }
-        .onChange(of: active) { _ in updateDrift() }
     }
 
-    /// Drifts only while visible (hidden tabs pause, so off-screen auroras cost nothing).
-    private func updateDrift() {
-        if active && !reduceMotion {
-            withAnimation(.easeInOut(duration: 16).repeatForever(autoreverses: true)) { drift = true }
-        } else {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) { drift = false }
-        }
-    }
-
-    private func blob(_ color: Color, opacity: Double, size: CGFloat) -> some View {
+    private func blobView(_ color: Color, opacity: Double, size: CGFloat) -> some View {
         Circle()
             .fill(RadialGradient(colors: [color.opacity(opacity), color.opacity(0)], center: .center,
                                  startRadius: 0, endRadius: size / 2))
             .frame(width: size, height: size)
-            .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 

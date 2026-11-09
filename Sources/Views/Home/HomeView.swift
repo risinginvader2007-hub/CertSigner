@@ -221,10 +221,11 @@ struct HomeView: View {
                         style: StrokeStyle(lineWidth: dropTargeted ? 2.5 : 2, lineCap: .round, dash: [9, 7], dashPhase: dashPhase)
                     )
             )
+            .glassShine(cornerRadius: Theme.corner + 4)
             .shadow(color: accent.opacity(dropTargeted ? 0.45 : 0), radius: 22)
             .animation(Theme.bouncy, value: dropTargeted)
         }
-        .buttonStyle(PressableButtonStyle(scale: 0.98))
+        .buttonStyle(ShinePressStyle(shape: RoundedRectangle(cornerRadius: Theme.corner + 4, style: .continuous), scale: 0.98))
         .onDrop(of: [UTType.item], isTargeted: $dropTargeted, perform: handleDrop)
         .accessibilityLabel("Import IPA")
         .accessibilityHint("Opens the Files picker")
@@ -266,8 +267,9 @@ struct HomeView: View {
             }
             .padding(Theme.padding)
             .cardBackground()
+            .glassShine(cornerRadius: Theme.corner)
         }
-        .buttonStyle(PressableButtonStyle(scale: 0.98))
+        .buttonStyle(ShinePressStyle(shape: RoundedRectangle(cornerRadius: Theme.corner, style: .continuous), scale: 0.98))
     }
 
     // MARK: Certificate
@@ -317,20 +319,26 @@ struct HomeView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 9)
-                                    .background(Capsule().fill(accent.opacity(0.14)))
+                                    .accentPillBackground(accent)
+                                    .glassShine(in: Capsule())
                             }
                         }
                         NavigationLink(value: HomeRoute.certificates) {
                             Label("Manage", systemImage: "slider.horizontal.3")
                                 .font(.subheadline.weight(.semibold))
+                                .foregroundColor(accent)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 9)
-                                .background(Capsule().fill(accent.opacity(0.14)))
+                                .accentPillBackground(accent)
+                                .glassShine(in: Capsule())
+                                .contentShape(Capsule())
                         }
+                        .buttonStyle(ShinePressStyle(shape: Capsule(), scale: 0.95))
                         Spacer()
                     }
                 }
             }
+            .glassShine(cornerRadius: Theme.corner)
         } else {
             Card {
                 HStack(spacing: 14) {
@@ -432,6 +440,7 @@ struct StatCard: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardBackground()
+        .glassShine(cornerRadius: Theme.corner)
         .onAppear {
             guard shown == nil else { return }
             guard !reduceMotion, Int(value) != nil else { shown = value; return }
