@@ -14,6 +14,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.autoCloseInstall) private var autoCloseInstall = true
     @AppStorage(SettingsKeys.signingMode) private var signingMode: SigningMode = .compatibility
     @AppStorage(SettingsKeys.backgroundAnimation) private var backgroundAnimation = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showCertificatePicker = false
     @AppStorage(SettingsKeys.deleteOriginal) private var deleteOriginal = true
     @AppStorage(SettingsKeys.defaultRemoveExtensions) private var defaultRemoveExtensions = false
@@ -119,11 +120,11 @@ struct SettingsView: View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Signing mode", systemImage: "signature")
-                GlassSegmentedControl(
+                SlidingSegmentedControl(
                     selection: $signingMode,
-                    options: SigningMode.allCases.map { GlassSegmentedControl<SigningMode>.Option(value: $0, title: $0.title) }
+                    options: SigningMode.allCases.map { .init(value: $0, title: $0.title) },
+                    accessibilityTitle: "Signing mode"
                 )
-                .accessibilityLabel("Signing mode")
                 Text(signingMode.detail)
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -189,15 +190,20 @@ struct SettingsView: View {
 
     private var appearanceSection: some View {
         Section("Appearance") {
-            // Sliding glass segmented control (plays the selection haptic itself).
-            GlassSegmentedControl(
-                selection: $appearance,
+            // Sliding segmented control; the switch cross-fades the whole screen (no white / black flash).
+            SlidingSegmentedControl(
+                selection: Binding(
+                    get: { appearance },
+                    set: { newValue in
+                        AppearanceCrossfade.run(reduceMotion: reduceMotion) { appearance = newValue }
+                    }
+                ),
                 options: AppearanceOption.allCases.map { option in
-                    GlassSegmentedControl<AppearanceOption>.Option(value: option, title: option.title, systemImage: option.systemImage)
-                }
+                    .init(value: option, title: option.title, systemImage: option.systemImage)
+                },
+                accessibilityTitle: "Appearance"
             )
-            .padding(.vertical, 4)
-            .accessibilityLabel("Theme")
+            .padding(.vertical, Space.x1)
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Accent colour")

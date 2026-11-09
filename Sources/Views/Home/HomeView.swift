@@ -98,9 +98,9 @@ struct HomeView: View {
 
     private var stats: some View {
         HStack(spacing: 12) {
-            StatCard(value: "\(certificates.certificates.count)", label: "Certificates", systemImage: "checkmark.seal.fill", tint: accent)
-            StatCard(value: "\(signedApps.apps.count)", label: "Signed apps", systemImage: "signature", tint: .purple)
-            StatCard(
+            StatTile(value: "\(certificates.certificates.count)", label: "Certificates", systemImage: "checkmark.seal.fill", tint: accent)
+            StatTile(value: "\(signedApps.apps.count)", label: "Signed apps", systemImage: "signature", tint: .purple)
+            StatTile(
                 value: certificates.active?.daysLeft.map { "\($0)" } ?? "–",
                 label: "Days left",
                 systemImage: "hourglass",
@@ -410,62 +410,6 @@ struct HomeView: View {
 /// Screens Home pushes, declared at Home's NavigationStack root.
 enum HomeRoute: Hashable {
     case certificates
-}
-
-struct StatCard: View {
-    let value: String
-    let label: String
-    let systemImage: String
-    let tint: Color
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Shown value: counts up once from 0 when the card first appears, then follows `value`.
-    @State private var shown: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.body.weight(.semibold))
-                .foregroundColor(tint)
-                .symbolBounce(value: value)
-                .frame(width: 34, height: 34)
-                .background(
-                    RoundedRectangle(cornerRadius: Radius.xs + 2, style: .continuous)
-                        .fill(LinearGradient(colors: [tint.opacity(0.28), tint.opacity(0.10)],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                )
-                .overlay(RoundedRectangle(cornerRadius: Radius.xs + 2, style: .continuous)
-                    .strokeBorder(tint.opacity(0.3), lineWidth: 0.75))
-                .ambientGlow(tint, radius: 8, opacity: 0.35)
-            Text(shown ?? value)
-                .font(.system(.title, design: .rounded).weight(.bold))
-                .monospacedDigit()
-                .displayTracking()
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .numericTransition()
-            Text(label)
-                .font(.caption.weight(.medium))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .cardBackground()
-        .glassShine(cornerRadius: Theme.corner)
-        .onAppear {
-            guard shown == nil else { return }
-            guard !reduceMotion, Int(value) != nil else { shown = value; return }
-            shown = "0"
-            withAnimation(.easeOut(duration: 0.7).delay(0.15)) { shown = value }
-        }
-        .onChange(of: value) { newValue in
-            withAnimation(Motion.smooth) { shown = newValue }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(value)")
-    }
 }
 
 extension View {

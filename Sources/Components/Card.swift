@@ -77,15 +77,7 @@ struct CardSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                if let systemImage { Image(systemName: systemImage) }
-                Text(title.uppercased())
-            }
-            .font(.caption.weight(.semibold))
-            .tracking(0.6)
-            .foregroundColor(.secondary)
-            .padding(.horizontal, Space.x1)
-            .accessibilityAddTraits(.isHeader)
+            SectionHeader(title, systemImage: systemImage)
 
             Card { VStack(alignment: .leading, spacing: 12) { content } }
         }

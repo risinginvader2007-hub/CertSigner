@@ -9,7 +9,7 @@ final class ThemeStoreTests: XCTestCase {
         abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b)
     }
 
-    func testAccentChangeFadesOverSixTenthsOfASecond() {
+    func testAccentChangeCrossFadesOverAbout350ms() {
         let traits = ThemeStore.currentTraits
         let store = ThemeStore(option: .purple)
         let from = RGBA(AccentOption.purple.color, traits: traits)
@@ -19,7 +19,7 @@ final class ThemeStoreTests: XCTestCase {
         XCTAssertEqual(store.accent, AccentOption.purple.color, "colour must not jump instantly")
 
         var samples: [(Double, Double)] = []   // (seconds, fraction of the way to orange)
-        while Date().timeIntervalSince(start) < 0.9 {
+        while Date().timeIntervalSince(start) < 0.6 {
             RunLoop.main.run(until: Date().addingTimeInterval(0.05))
             let now = RGBA(store.accent, traits: traits)
             let fraction = distance(from, now) / distance(from, to)
@@ -27,7 +27,7 @@ final class ThemeStoreTests: XCTestCase {
         }
         for (t, f) in samples { print(String(format: "theme fade t=%.2fs  %.0f%%", t, f * 100)) }
 
-        let middle = samples.filter { $0.0 > 0.2 && $0.0 < 0.45 }
+        let middle = samples.filter { $0.0 > 0.1 && $0.0 < 0.27 }
         XCTAssertFalse(middle.isEmpty)
         XCTAssertTrue(middle.allSatisfy { $0.1 > 0.05 && $0.1 < 0.97 }, "mid-fade colours should be in between")
         for (earlier, later) in zip(samples, samples.dropFirst()) {
@@ -42,7 +42,7 @@ final class ThemeStoreTests: XCTestCase {
         let traits = ThemeStore.currentTraits
         let store = ThemeStore(option: .blue)
         store.apply(.red)
-        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.17))
         let mid = RGBA(store.accent, traits: traits)
         store.apply(.green)
         RunLoop.main.run(until: Date().addingTimeInterval(0.02))

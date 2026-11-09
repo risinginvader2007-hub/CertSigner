@@ -1,51 +1,5 @@
 import SwiftUI
 
-// MARK: - Motion language (define once, use everywhere)
-
-/// Named motion tokens. Every animation in the app should come from here.
-enum Motion {
-    /// Taps, toggles, selection pills: quick and crisp.
-    static let snappy = Animation.spring(response: 0.28, dampingFraction: 0.82)
-    /// Layout changes, cards appearing, sheets' inner content.
-    static let smooth = Animation.spring(response: 0.45, dampingFraction: 0.86)
-    /// Playful confirmations: checkmarks, badges, icons popping in.
-    static let bouncy = Animation.spring(response: 0.5, dampingFraction: 0.66)
-    /// Ambient, slow things: glows, background drift, breathing.
-    static let gentle = Animation.easeInOut(duration: 0.6)
-
-    /// Durations (seconds) for non-spring timing.
-    static let quick: Double = 0.18
-    static let standard: Double = 0.3
-    static let slow: Double = 0.6
-    /// Delay between items in staggered entrances.
-    static let stagger: Double = 0.05
-
-    /// With Reduce Motion on, movement becomes a short cross-fade.
-    static func adaptive(_ animation: Animation, reduceMotion: Bool) -> Animation {
-        reduceMotion ? .easeInOut(duration: 0.2) : animation
-    }
-}
-
-/// 4/8 pt spacing grid.
-enum Space {
-    static let x1: CGFloat = 4
-    static let x2: CGFloat = 8
-    static let x3: CGFloat = 12
-    static let x4: CGFloat = 16
-    static let x5: CGFloat = 20
-    static let x6: CGFloat = 24
-    static let x8: CGFloat = 32
-}
-
-/// One corner-radius scale; always used with `style: .continuous`.
-enum Radius {
-    static let xs: CGFloat = 8
-    static let sm: CGFloat = 12
-    static let md: CGFloat = 16
-    static let lg: CGFloat = 22
-    static let xl: CGFloat = 28
-}
-
 /// Central design tokens. Keep every screen pulling from here.
 enum Theme {
     static let corner: CGFloat = Radius.lg

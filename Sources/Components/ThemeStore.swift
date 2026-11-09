@@ -11,7 +11,7 @@ import UIKit
 /// target colours are published.
 @MainActor
 final class ThemeStore: ObservableObject {
-    static let transitionDuration: Double = 0.6
+    static let transitionDuration: Double = Motion.themeCrossfade
 
     @Published private(set) var accent: Color
     @Published private(set) var gradient: [Color]
@@ -115,6 +115,36 @@ struct RGBA: Equatable {
     }
 
     var color: Color { Color(.sRGB, red: r, green: g, blue: b, opacity: a) }
+}
+
+/// System / Light / Dark switch without a flash: a snapshot of the current screen is laid over
+/// the window, the appearance changes underneath, and the snapshot fades out over 0.35 s.
+/// Rapid repeated switches stack snapshots of whatever is on screen, so nothing ever jumps.
+@MainActor
+enum AppearanceCrossfade {
+    static let snapshotTag = 0xC5F0
+
+    static func run(reduceMotion: Bool = false, _ change: () -> Void) {
+        guard let window = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap(\.windows)
+                .first(where: { $0.isKeyWindow }),
+              let snapshot = window.snapshotView(afterScreenUpdates: false) else {
+            change()
+            return
+        }
+        snapshot.tag = snapshotTag
+        snapshot.isUserInteractionEnabled = false
+        snapshot.frame = window.bounds
+        window.addSubview(snapshot)
+        change()
+        UIView.animate(withDuration: reduceMotion ? 0.2 : Motion.themeCrossfade, delay: 0.02,
+                       options: [.curveEaseInOut, .allowUserInteraction, .beginFromCurrentState]) {
+            snapshot.alpha = 0
+        } completion: { _ in
+            snapshot.removeFromSuperview()
+        }
+    }
 }
 
 /// Low Power Mode, observed once for the whole app.

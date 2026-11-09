@@ -339,11 +339,11 @@ struct SignAppSheet: View {
                 Text("Signing mode")
                     .font(.caption.weight(.semibold))
                     .foregroundColor(.secondary)
-                GlassSegmentedControl(
+                SlidingSegmentedControl(
                     selection: $mode,
-                    options: SigningMode.allCases.map { GlassSegmentedControl<SigningMode>.Option(value: $0, title: $0.title) }
+                    options: SigningMode.allCases.map { .init(value: $0, title: $0.title) },
+                    accessibilityTitle: "Signing mode"
                 )
-                .accessibilityLabel("Signing mode")
                 Text(mode.detail)
                     .font(.caption)
                     .foregroundColor(.secondary)

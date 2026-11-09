@@ -320,61 +320,6 @@ struct GlowTextField: View {
 
 // MARK: - Segmented control with a sliding glass indicator
 
-struct GlassSegmentedControl<Value: Hashable>: View {
-    struct Option: Identifiable {
-        let value: Value
-        let title: String
-        var systemImage: String? = nil
-        var id: Value { value }
-    }
-
-    @Binding var selection: Value
-    let options: [Option]
-
-    @Environment(\.themeAccent) private var accent
-    @Environment(\.themeGradient) private var gradient
-    @Namespace private var namespace
-
-    var body: some View {
-        HStack(spacing: Space.x1) {
-            ForEach(options) { option in
-                let selected = option.value == selection
-                Button {
-                    guard !selected else { return }
-                    Haptics.selection()
-                    withAnimation(Motion.snappy) { selection = option.value }
-                } label: {
-                    HStack(spacing: 6) {
-                        if let image = option.systemImage {
-                            Image(systemName: image).symbolBounce(value: selected)
-                        }
-                        Text(option.title).lineLimit(1).minimumScaleFactor(0.8)
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(selected ? .white : .primary.opacity(0.75))
-                    .frame(maxWidth: .infinity, minHeight: 36)
-                    .background {
-                        if selected {
-                            Capsule()
-                                .fill(LinearGradient(colors: gradient, startPoint: .leading, endPoint: .trailing))
-                                .overlay(Capsule().strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
-                                .shadow(color: accent.opacity(0.35), radius: 8, y: 3)
-                                .matchedGeometryEffect(id: "segment", in: namespace)
-                        }
-                    }
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(PressableButtonStyle(scale: 0.95))
-                .accessibilityLabel(option.title)
-                .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
-            }
-        }
-        .padding(Space.x1)
-        .background(Capsule().fill(Color.primary.opacity(0.06)))
-        .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 1))
-    }
-}
-
 // MARK: - Scroll-driven tilt (hero cards)
 
 extension View {
@@ -638,7 +583,8 @@ private struct StaggeredEntrance: ViewModifier {
             .opacity(active ? 1 : 0)
             .offset(y: active || reduceMotion ? 0 : 16)
             .scaleEffect(active || reduceMotion ? 1 : 0.98)
-            .animation(Motion.adaptive(Motion.smooth, reduceMotion: reduceMotion).delay(Double(index) * Motion.stagger),
+            .animation(Motion.adaptive(Motion.smooth, reduceMotion: reduceMotion)
+                           .delay(min(Double(index) * Motion.stagger, Motion.maxStaggerDelay)),
                        value: active)
     }
 }
