@@ -89,3 +89,33 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "AppIcon-Sunset AppIcon-Mint AppIcon-Midnight"
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+  # Unit tests (simulator): run the real signing pipeline on generated fixtures (see .github/workflows/signing-test.yml).
+  CertSignerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: CertSigner
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.certsigner.app.tests
+        SWIFT_VERSION: "5.0"
+schemes:
+  # Explicit app scheme (same as the one Xcode generated implicitly) so adding a test scheme doesn't change the IPA build.
+  CertSigner:
+    build:
+      targets:
+        CertSigner: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  SigningTests:
+    build:
+      targets:
+        CertSigner: [test]
+        CertSignerTests: [test]
+    test:
+      config: Debug
+      targets: [CertSignerTests]

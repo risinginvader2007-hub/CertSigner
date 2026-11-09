@@ -1,0 +1,48 @@
+name: Signing test
+on:
+  push:
+    branches: [main, ui-overhaul]
+  workflow_dispatch:
+
+jobs:
+  sign-multi-extension-app:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Make fixtures (2 extensions + framework + dylib, explicit mismatching profile)
+        run: bash .github/scripts/make-signing-fixtures.sh "$RUNNER_TEMP/fixtures"
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Run signing pipeline tests in the simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')))")
+          echo "Simulator: $UDID"
+          TEST_RUNNER_CS_FIXTURES="$RUNNER_TEMP/fixtures" xcodebuild test \
+            -project CertSigner.xcodeproj -scheme SigningTests -destination "id=$UDID" \
+            -derivedDataPath build CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO 2>&1 | tail -n 60
+          exit ${PIPESTATUS[0]}
+      - name: Inspect the signed IPA (Compatibility)
+        run: |
+          set -e
+          F="$RUNNER_TEMP/fixtures"
+          echo "=== signing log ==="; cat "$F/compat.ipa.log"
+          mkdir -p "$F/out" && cd "$F/out" && unzip -q -o ../compat.ipa
+          APP=Payload/Multi.app
+          echo "=== PlugIns in signed IPA ==="; ls -la "$APP/PlugIns"
+          test -d "$APP/PlugIns/Share.appex" && test -d "$APP/PlugIns/Widget.appex"
+          echo "=== bundle IDs (unchanged) ==="
+          for b in "$APP" "$APP/PlugIns/Share.appex" "$APP/PlugIns/Widget.appex"; do
+            /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$b/Info.plist"
+          done
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "com.husk.test"
+          echo "=== code signatures ==="
+          for item in "$APP" "$APP/PlugIns/Share.appex" "$APP/PlugIns/Widget.appex" "$APP/Frameworks/Kit.framework" "$APP/Frameworks/libextra.dylib"; do
+            echo "--- $item"
+            codesign -dvv "$item" 2>&1 | grep -E "^(Identifier|Authority|TeamIdentifier|CodeDirectory)" || { echo "NOT SIGNED: $item"; exit 1; }
+          done
+          echo "=== embedded profiles ==="; find Payload -name embedded.mobileprovision
+      - name: Strict log (expected to stop at the mismatch)
+        if: always()
+        run: cat "$RUNNER_TEMP/fixtures/strict.ipa.log" || true
