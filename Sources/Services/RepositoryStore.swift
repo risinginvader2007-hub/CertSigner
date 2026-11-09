@@ -198,6 +198,7 @@ final class RepositoryStore: ObservableObject {
             if let failure, !Self.isCancellation(failure) {
                 // Real failure: keep the last good apps, show the reason.
                 repositories[index].lastError = Self.reason(for: failure)
+                repositories[index].lastErrorDetail = Self.technicalDetail(for: failure)
                 AppLog.error("Refreshing source \(repo.name) failed: \(Self.reason(for: failure))")
             }
             // Cancelled twice: no result. Keep the last good data and say nothing.
@@ -245,6 +246,14 @@ final class RepositoryStore: ObservableObject {
     nonisolated static func looksLikeCancellation(_ message: String) -> Bool {
         let text = message.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         return text == "cancelled" || text == "canceled" || text.contains("cancellationerror")
+    }
+
+    /// Error domain, code and system message, for the "Details" disclosure.
+    nonisolated static func technicalDetail(for error: Error) -> String {
+        let nsError = error as NSError
+        var parts = ["\(nsError.domain) \(nsError.code)", nsError.localizedDescription]
+        if let url = (error as? URLError)?.failingURL { parts.append(url.absoluteString) }
+        return parts.joined(separator: "\n")
     }
 
     /// The real reason, in plain words.
@@ -330,7 +339,7 @@ final class RepositoryStore: ObservableObject {
                     toasts.show("Download of \(app.name) cancelled.", kind: .info)
                 } else {
                     AppLog.error("Download of \(app.name) failed: \(error.localizedDescription)")
-                    toasts.show("Couldn't download \(app.name): \(error.localizedDescription)", kind: .error)
+                    toasts.show("Couldn\'t download \(app.name). \(RepositoryStore.reason(for: error))", kind: .error)
                 }
             }
         }

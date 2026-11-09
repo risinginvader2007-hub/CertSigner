@@ -324,6 +324,7 @@ struct LibraryView: View {
                 if !signedApps.apps.isEmpty {
                     Text("\(apps.count)")
                         .monospacedDigit()
+                        .numericTransition()
                 }
             }
             .opacity(lastSignedAppLeaving ? 0 : 1)
@@ -338,7 +339,7 @@ struct LibraryView: View {
         }
         queue.enqueueResign(app, certificateID: active.id)
         Haptics.impact(.medium)
-        toasts.show("Re-signing \(app.name) with \(active.nickname)", kind: .info)
+        toasts.show("Re-signing \(app.name) with \(active.displayName)", kind: .info)
     }
 
     private func clearFilters() {

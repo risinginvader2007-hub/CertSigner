@@ -47,6 +47,8 @@ struct Repository: Codable, Hashable, Identifiable {
     /// HTTP validators from the last good response, sent back as If-None-Match / If-Modified-Since.
     var etag: String? = nil
     var lastModified: String? = nil
+    /// Technical detail of the last failure (shown under "Details").
+    var lastErrorDetail: String? = nil
 }
 
 enum RepositoryError: LocalizedError {

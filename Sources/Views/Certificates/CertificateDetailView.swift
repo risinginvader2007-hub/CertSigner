@@ -94,7 +94,7 @@ struct CertificateDetailView: View {
         let store = certificates
         let toastCenter = toasts
         let id = certificate.id
-        let name = certificate.nickname
+        let name = certificate.displayName
         RowDeleteRequests.shared.request(id) {
             withAnimation(DeleteMotion.collapse) { store.delete(id) }
             toastCenter.show("Deleted \(name)", kind: .success)
@@ -138,7 +138,7 @@ struct CertificateDetailView: View {
             } else {
                 PrimaryButton(title: "Set as Active", systemImage: "star") {
                     withAnimation(Theme.bouncy) { certificates.setActive(certificate.id) }
-                    toasts.show("\(certificate.nickname) is now active", kind: .success)
+                    toasts.show("\(certificate.displayName) is now active", kind: .success)
                 }
                 .frame(maxWidth: 240)
                 .transition(.scale.combined(with: .opacity))

@@ -141,7 +141,7 @@ struct SignedAppDetailView: View {
             return
         }
         queue.enqueueResign(app, certificateID: active.id)
-        toasts.show("Re-signing \(app.name) with \(active.nickname)", kind: .info)
+        toasts.show("Re-signing \(app.name) with \(active.displayName)", kind: .info)
         dismiss()
     }
 }

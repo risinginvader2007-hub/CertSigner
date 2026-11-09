@@ -441,7 +441,7 @@ struct StorageCategoryView: View {
             if !quiet { toasts.show("Deleted \(app.name)", kind: .success) }
         case .certificates:
             guard let id = UUID(uuidString: entry.key) else { return }
-            let name = certificates.certificates.first { $0.id == id }?.nickname ?? entry.name
+            let name = certificates.certificates.first { $0.id == id }?.displayName ?? entry.name
             certificates.delete(id)
             if !quiet { toasts.show("Deleted \(name)", kind: .success) }
         case .logs:

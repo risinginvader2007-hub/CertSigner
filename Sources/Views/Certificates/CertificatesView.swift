@@ -86,7 +86,7 @@ struct CertificatesView: View {
         guard deletePhases[certificate.id] == nil else { return }
         DeleteMotion.run(reduceMotion: reduceMotion, setPhase: { deletePhases[certificate.id] = $0 }) {
             certificates.delete(certificate.id)
-            toasts.show("Deleted \(certificate.nickname)", kind: .success)
+            toasts.show("Deleted \(certificate.displayName)", kind: .success)
         }
     }
 
@@ -100,7 +100,7 @@ struct CertificatesView: View {
         if certificate.id != certificates.activeID {
             Button {
                 certificates.setActive(certificate.id)
-                toasts.show("\(certificate.nickname) is now active", kind: .success)
+                toasts.show("\(certificate.displayName) is now active", kind: .success)
             } label: {
                 Label("Set as Active", systemImage: "star")
             }

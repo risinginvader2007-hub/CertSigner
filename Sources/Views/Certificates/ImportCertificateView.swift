@@ -252,7 +252,7 @@ struct ImportCertificateView: View {
             if let warning = result.warning {
                 toasts.show(warning, kind: .warning)
             } else {
-                toasts.show("Imported \(result.certificate.nickname)", kind: .success)
+                toasts.show("Imported \(result.certificate.displayName)", kind: .success)
             }
             dismiss()
         } catch {

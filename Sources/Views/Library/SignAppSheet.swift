@@ -121,7 +121,7 @@ struct SignAppSheet: View {
             withAnimation(Theme.bouncy.delay(0.05)) { appeared = true }
             if autoStart && !started {
                 if hasErrors {
-                    toasts.show("Quick Sign needs your attention: review the checks.", kind: .warning)
+                    toasts.show("Quick Sign paused. Review the checks before signing.", kind: .warning)
                 } else {
                     start()
                 }

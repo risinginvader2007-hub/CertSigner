@@ -50,6 +50,7 @@ struct SourcesView: View {
                                     Text("All Apps").font(.body.weight(.semibold))
                                     Text("\(store.allApps.count) from \(store.repositories.count) source\(store.repositories.count == 1 ? "" : "s")")
                                         .font(.caption).foregroundColor(.secondary)
+                                        .numericTransition()
                                 }
                             }
                         }
@@ -149,7 +150,7 @@ struct RepositoryRow: View {
                 // Cached apps stay listed while refreshing; only real failures show a warning.
                 Text(detail).font(.caption).foregroundColor(.secondary).lineLimit(1)
                 if let error = repo.lastError, !refreshing {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                    Label("Couldn't refresh. \(error)", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundColor(Theme.warning)
                         .lineLimit(2)
@@ -305,7 +306,12 @@ struct RepositoryView: View {
                     }
                     Section(query.isEmpty ? "Apps" : "Results") {
                         let apps = filtered(repo.apps)
-                        if apps.isEmpty {
+                        if repo.apps.isEmpty && store.refreshing.contains(repo.id) {
+                            LoadingSkeleton(rows: 4)
+                                .padding(.vertical, Space.x1)
+                        } else if repo.apps.isEmpty {
+                            Text("This source doesn't list any apps yet.").foregroundColor(.secondary)
+                        } else if apps.isEmpty {
                             Text("No apps match “\(query)”.").foregroundColor(.secondary)
                         }
                         ForEach(apps) { app in
@@ -352,16 +358,10 @@ struct RepositoryView: View {
                 Text(subtitle).font(.subheadline).foregroundColor(.secondary).lineLimit(4)
             }
             if let error = repo.lastError, !store.refreshing.contains(repo.id) {
-                HStack(alignment: .firstTextBaseline, spacing: Space.x2) {
-                    Label("Last refresh failed: \(error)", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundColor(Theme.warning)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                    Button("Retry") { store.startRefresh(repo.id) }
-                        .font(.caption.weight(.semibold))
-                        .buttonStyle(.borderless)
-                }
+                ErrorState(title: "Couldn't refresh this source",
+                           message: "\(error) The apps below are from the last successful refresh.",
+                           details: repo.lastErrorDetail, onRetry: { store.startRefresh(repo.id) },
+                           compact: true)
             }
             if let updated = repo.lastUpdated {
                 Text(RepositoryRow.lastUpdatedText(updated))

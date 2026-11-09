@@ -576,7 +576,7 @@ struct AppIconPicker: View {
 
     private func select(_ option: Option) {
         guard UIApplication.shared.supportsAlternateIcons else {
-            toasts.show("This install doesn't support alternate icons.", kind: .warning)
+            toasts.show("This copy of CertSigner can\'t change its icon.", kind: .warning)
             return
         }
         guard current != option.iconName else { return }
