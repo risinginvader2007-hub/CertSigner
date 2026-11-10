@@ -42,6 +42,10 @@ targets:
       path: Support/Info.plist
       properties:
         LSSupportsOpeningDocumentsInPlace: false
+        # certsigner://import#… : certificate hand-off from the Get CertSigner web page (local only).
+        CFBundleURLTypes:
+          - CFBundleURLName: com.certsigner.app.import
+            CFBundleURLSchemes: [certsigner]
         UILaunchScreen:
           UIColorName: LaunchBackground
         CFBundleDocumentTypes:

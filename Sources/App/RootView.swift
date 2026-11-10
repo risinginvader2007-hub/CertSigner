@@ -11,6 +11,7 @@ struct RootView: View {
     @EnvironmentObject private var router: TabRouter
     @EnvironmentObject private var toasts: ToastCenter
     @EnvironmentObject private var importer: ImportCoordinator
+    @EnvironmentObject private var certificateStore: CertificateStore
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var queue: SigningQueue
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
@@ -80,8 +81,34 @@ struct RootView: View {
         #endif
     }
 
+    /// Certificate hand-off from the Get CertSigner page (certsigner://import#…).
+    private func importFromWeb(_ url: URL) async {
+        do {
+            let payload = try WebImport.parse(url)
+            if let existing = certificateStore.existing(p12Data: payload.p12, profileData: payload.profile) {
+                certificateStore.setActive(existing.id)
+                toasts.show("\(existing.displayName) is already in CertSigner", kind: .success)
+                AppLog.info("web import: already present, made active")
+                return
+            }
+            let result = try await certificateStore.importCertificate(nickname: payload.name, p12Data: payload.p12,
+                                                                      profileData: payload.profile, password: payload.password)
+            certificateStore.setActive(result.certificate.id)
+            Haptics.success()
+            toasts.show(result.warning ?? "Imported \(result.certificate.displayName). Ready to sign.", kind: result.warning == nil ? .success : .warning)
+            AppLog.info("web import: imported \(result.certificate.displayName)")
+        } catch {
+            toasts.show("Couldn't import the certificate. \(error.localizedDescription)", kind: .error)
+            AppLog.error("web import: \(error.localizedDescription)")
+        }
+    }
+
     /// "Open in" / Share → CertSigner.
     private func handleIncoming(_ url: URL) {
+        if WebImport.isImportLink(url) {
+            Task { await importFromWeb(url) }
+            return
+        }
         guard url.isFileURL else { return }
         switch importer.handleIncoming(url) {
         case .certificateFile:

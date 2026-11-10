@@ -7,7 +7,7 @@ const relay = (document.querySelector('meta[name="relay"]').content || '').repla
 const relayConfigured = /^https:\/\//.test(relay);
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-const state = { ipa: null, ipaError: null, p12: null, profile: null, facts: null, worker: null, workerReady: false, signed: null, downloadURL: null, expiryTimer: null };
+const state = { handoff: null, ipa: null, ipaError: null, p12: null, profile: null, facts: null, worker: null, workerReady: false, signed: null, downloadURL: null, expiryTimer: null };
 const logLines = [];
 const started = performance.now();
 
@@ -247,8 +247,10 @@ async function onWorkerMessage(event) {
     case 'signed':
       state.signed = message;
       log(`Signed ${message.title} ${message.version} as ${message.bundleID} (${(message.ipa.length / 1048576).toFixed(1)} MB)`);
+      // Kept in this page's memory only, for the on-device hand-off to the app (Import).
+      state.handoff = { name: message.certificateName, p12: state.p12.bytes.slice(), profile: state.profile.bytes.slice(), password: $('password').value };
       clearSecrets();
-      log('Certificate, password and profile cleared from memory');
+      log('Fields cleared; the certificate is held in this page only until you import or start over');
       await publish();
       break;
     case 'error':
@@ -291,6 +293,7 @@ async function publish() {
   const install = $('install'), hint = $('install-hint');
   install.hidden = !link;
   hint.hidden = false;
+  $('import-box').hidden = !(state.handoff && isIOS);
   if (link) {
     install.href = 'itms-services://?action=download-manifest&url=' + encodeURIComponent(link.manifestURL);
     $('ready-title').textContent = 'Ready to install';
@@ -328,8 +331,40 @@ function countdown(seconds, element) {
 
 $('install').addEventListener('click', () => log('Install tapped: iOS prompt requested'));
 
+const toBase64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
+
+/// certsigner://import#<base64url JSON>. The fragment goes from Safari to the app on this iPhone;
+/// a custom-scheme link is never sent to any server.
+export function importURL(handoff) {
+  const json = JSON.stringify({ v: 1, name: handoff.name, p12: toBase64(handoff.p12), profile: toBase64(handoff.profile), password: handoff.password });
+  const payload = toBase64(new TextEncoder().encode(json)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return 'certsigner://import#' + payload;
+}
+
+function forgetHandoff() {
+  if (!state.handoff) return;
+  state.handoff.p12.fill(0);
+  state.handoff.profile.fill(0);
+  state.handoff = null;
+  $('import-box').hidden = true;
+}
+
+$('import').addEventListener('click', () => {
+  if (!state.handoff) return;
+  log('Import tapped: opening CertSigner on this iPhone');
+  window.location.href = importURL(state.handoff);
+  // If CertSigner opened, Safari went to the background: the copy here is no longer needed.
+  setTimeout(() => {
+    if (document.hidden) { forgetHandoff(); log('Handed to CertSigner; certificate cleared from this page'); }
+    else log('CertSigner did not open. Wait until it has finished installing, then tap Import again.');
+  }, 2500);
+});
+
+window.addEventListener('pagehide', forgetHandoff);
+
 function reset() {
   clearInterval(state.expiryTimer);
+  forgetHandoff();
   clearSecrets();
   state.signed = null;
   if (state.downloadURL) URL.revokeObjectURL(state.downloadURL);

@@ -29,7 +29,7 @@
 
     <section class="card privacy" aria-labelledby="privacy-title">
       <h2 id="privacy-title"><span class="glyph" aria-hidden="true">🔒</span> Your certificate stays on this device</h2>
-      <p>Signing runs inside this page. Your <strong>.p12</strong>, its <strong>password</strong> and your <strong>profile</strong> are never uploaded or saved, and are cleared from memory when signing ends. Only the finished, signed app is sent to a temporary link so iOS can install it. That link is deleted within 10 minutes.</p>
+      <p>Signing runs inside this page. Your <strong>.p12</strong>, its <strong>password</strong> and your <strong>profile</strong> are never uploaded or saved. After signing they stay in this page's memory only so you can hand them to CertSigner on this iPhone, and are cleared when you import, start over or leave the page. Only the finished, signed app is sent to a temporary link so iOS can install it. That link is deleted within 10 minutes.</p>
     </section>
 
     <ol class="steps" id="steps" aria-label="Progress">
@@ -85,6 +85,10 @@
       <p id="ready-summary"></p>
       <a class="button primary" id="install" href="#" hidden>Install CertSigner</a>
       <p class="hint" id="install-hint" hidden></p>
+      <div class="import" id="import-box" hidden>
+        <p><strong>Then add your certificate to CertSigner.</strong> Once CertSigner is on your Home Screen, tap below. Your certificate goes straight from Safari to the app on this iPhone, never over the internet.</p>
+        <button class="button primary" id="import">Import Certificate into CertSigner</button>
+      </div>
       <a class="button secondary" id="download" download="CertSigner-signed.ipa" href="#">Download signed IPA</a>
       <div class="next" id="next" hidden>
         <h3>What happens next</h3>
@@ -92,7 +96,7 @@
           <li>Tap <strong>Install</strong> on the iOS prompt, then go to your Home Screen. CertSigner appears there while it installs.</li>
           <li>If iOS says the developer is not trusted: <strong>Settings › General › VPN &amp; Device Management</strong>, tap your certificate, then <strong>Trust</strong>.</li>
           <li>If it says “Unable to Install”: this iPhone's UDID is probably not in your profile, or the certificate was revoked.</li>
-          <li>Open CertSigner. It confirms which certificate signed it, and from then on it re-signs itself.</li>
+          <li>Come back here and tap <strong>Import Certificate into CertSigner</strong>, then <strong>Open</strong>. CertSigner saves the certificate and is ready to sign.</li>
         </ol>
       </div>
     </section>

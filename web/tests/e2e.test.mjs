@@ -111,7 +111,14 @@ for (const engine of ['chromium', 'webkit']) {
       assert.equal(await page.evaluate(() => document.getElementById('p12').files.length + document.getElementById('profile').files.length), 0);
       const logText = await page.textContent('#log');
       assert.ok(!logText.includes(password), 'the log never shows the password');
-      assert.match(logText, /cleared from memory/);
+      assert.match(logText, /held in this page only/);
+      // The on-device hand-off: a certsigner:// link built on tap, never a request.
+      if (engine === 'webkit') {
+        assert.equal(await page.isVisible('#import'), true, 'Import button shown on iPhone');
+        const url = await page.evaluate(async () => (await import('./js/app.js')).importURL({ name: 'X', p12: new Uint8Array([1, 2, 250]), profile: new Uint8Array([3]), password: 'p+w/=' }));
+        const json = JSON.parse(Buffer.from(url.replace('certsigner://import#', ''), 'base64url').toString());
+        assert.deepEqual(json, { v: 1, name: 'X', p12: 'AQL6', profile: 'Aw==', password: 'p+w/=' });
+      }
 
       // The privacy guarantee, checked against every request the browser made.
       assert.equal(uploads.length, 1, 'exactly one upload');

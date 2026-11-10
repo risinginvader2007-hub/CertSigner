@@ -97,6 +97,14 @@ final class CertificateStore: ObservableObject {
         UserDefaults.standard.set(id?.uuidString, forKey: activeKey)
     }
 
+    /// The certificate already stored with exactly this .p12 and profile, if any.
+    func existing(p12Data: Data, profileData: Data) -> Certificate? {
+        certificates.first { certificate in
+            (try? Data(contentsOf: p12URL(for: certificate.id))) == p12Data
+                && (try? Data(contentsOf: profileURL(for: certificate.id))) == profileData
+        }
+    }
+
     func importCertificate(nickname: String, p12Data: Data, profileData: Data, password: String) async throws -> CertificateImportResult {
         let trimmed = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw CertificateImportError.missingNickname }
