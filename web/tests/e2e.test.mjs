@@ -25,6 +25,7 @@ const ready = playwright && existsSync(path.join(site, 'wasm', 'zsign.wasm')) &&
 function serve() {
   const server = http.createServer((request, response) => {
     const name = decodeURIComponent(new URL(request.url, 'http://x').pathname);
+    if (name === '/app/build.json') { response.writeHead(200, { 'Content-Type': 'application/json' }).end('{"version":"1.0","build":"test"}'); return; }
     const file = path.join(site, name === '/' ? 'index.html' : name);
     if (!file.startsWith(site) || !existsSync(file)) { response.writeHead(404).end('not found'); return; }
     let body = readFileSync(file);
@@ -99,6 +100,9 @@ for (const engine of ['chromium', 'webkit']) {
       assert.equal(href, 'itms-services://?action=download-manifest&url=' + encodeURIComponent(`${RELAY}/i/${'f'.repeat(64)}/manifest.plist`));
       assert.match(await page.textContent('#ready-summary'), /as com\.example\.signedweb to match your profile/);
       assert.match(await page.getAttribute('#download', 'href'), /^blob:/);
+      // Checked before any screenshot: Playwright's WebKit screenshot injects an inline style, which
+      // this page's CSP (rightly) refuses and reports.
+      assert.deepEqual(consoleErrors, [], 'no console errors (CSP violations show up here)');
       mkdirSync(shots, { recursive: true });
       await page.screenshot({ path: path.join(shots, `${engine}-ready.png`), fullPage: true });
 
@@ -126,7 +130,6 @@ for (const engine of ['chromium', 'webkit']) {
       }
       const others = requests.filter((r) => !r.url.startsWith(origin));
       console.log(`${engine}: ${requests.length} requests, ${others.length} to the relay, upload ${upload.length} bytes, console errors: ${consoleErrors.length}`);
-      assert.deepEqual(consoleErrors, [], 'no console errors (CSP violations show up here)');
 
       // Start Over returns to a clean form.
       await page.click('#reset');
