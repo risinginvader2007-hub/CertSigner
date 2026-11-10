@@ -65,6 +65,79 @@ Open it in Safari on your iPhone, then share the file to FlareStore (or any sign
 ### 7. Settings
 Certificates, signing defaults (remove extensions, keep bundle ID), install after signing, delete original IPA after signing, install method, UDID, appearance (system / light / dark), accent colour, **app icon** (Ocean, Sunset, Mint, Midnight), storage usage with Clear Cache and Remove Unused Imports, **Export Log File**, and About.
 
+## Web installer ("Get CertSigner")
+
+Install CertSigner from Safari with only your own `.p12` and `.mobileprovision`, no other
+sideloading app: **https://risinginvader2007-hub.github.io/CertSigner/**
+
+### How it works
+
+| Part | Where | What it does |
+|---|---|---|
+| Page | `web/site` (GitHub Pages) | Picks the files, shows the profile facts, runs the signer, offers Install / Download. |
+| Signer | `web/wasm` → `zsign.wasm` | The same vendored zsign as the app plus OpenSSL, compiled to WebAssembly with Emscripten. Runs in a Web Worker, entirely in memory. |
+| Unsigned app | `app/CertSigner.ipa` on Pages | A same-origin copy of the IPA from this build (no CORS). |
+| Install relay | `worker/` (Cloudflare Worker + KV) | Holds the **signed** IPA for a few minutes and serves the `itms-services` manifest, because iOS only installs from an HTTPS URL. |
+
+**Privacy.** The `.p12`, its password and the profile are read into memory in the page, passed to
+the signing worker, and cleared when signing ends (the worker is terminated and the fields are
+emptied). No network request contains them. That is enforced by a test: `web/tests/e2e.test.mjs`
+drives the real page in Chromium and WebKit and checks every request the browser makes. The only
+upload is the signed IPA. The page has a strict Content-Security-Policy (no third-party scripts,
+styles or fonts; it may only connect to itself and the relay), no cookies, no analytics.
+
+**Signing rules.** A wildcard profile keeps CertSigner's bundle ID. A profile with an explicit
+App ID re-signs CertSigner with that bundle ID so iOS accepts it. The profile's entitlements are
+used as they are (so `get-task-allow` is kept when the profile has it), and every nested framework
+is signed. Signing is blocked, with the reason, when the password is wrong, the certificate is not
+in the profile, or the profile or certificate has expired. On first launch the app shows
+"Signed with <certificate>, expires <date>".
+
+**The relay** (`worker/src/index.js`):
+
+- `POST /upload` accepts only a ZIP with `Payload/<App>.app/Info.plist`, up to 25 MB (KV's value
+  limit; a signed CertSigner is about 6 MB), only from the page's origin, 5 uploads per minute per
+  IP. Returns an unguessable 256-bit id.
+- `GET /i/<id>/manifest.plist` and `GET /i/<id>/app.ipa`. The manifest's bundle ID, version and
+  title are read from the uploaded IPA.
+- Entries expire after 10 minutes, or 2 minutes after the first complete download (KV expiry, plus
+  a check on every read). No accounts; file contents are never logged.
+
+### Set it up (one time)
+
+1. **GitHub Pages**: Settings → Pages → Source: **GitHub Actions** (already set for this repository).
+2. **Cloudflare** (free plan, no card needed for Workers + KV):
+   1. Create an account, then My Profile → API Tokens → Create Token → "Edit Cloudflare Workers" template.
+   2. In this repository: Settings → Secrets and variables → Actions → **New repository secret**
+      named `CLOUDFLARE_API_TOKEN`. If your login can see more than one Cloudflare account, also add
+      `CLOUDFLARE_ACCOUNT_ID`. Never paste the token anywhere else.
+3. Push to `main` (or re-run the "Build IPA" workflow). CI creates the KV namespace, deploys the
+   Worker, and publishes the page with the Worker's URL in it.
+
+Without the Cloudflare secret everything else still works: the page signs and offers
+"Download signed IPA", and says one-tap install is not set up.
+
+If the Worker is deployed some other way, set the repository **variable** `RELAY_URL`
+(e.g. `https://get-certsigner.<you>.workers.dev`) and the page will use it.
+
+### Run it yourself
+
+```bash
+# Signer (needs Emscripten on PATH); builds OpenSSL once into .wasm-build/
+bash web/wasm/build.sh
+# Put an unsigned IPA at web/site/app/CertSigner.ipa, then:
+bash web/tests/make-fixtures.sh            # throwaway test certificate + profiles
+cd web && npm i --no-save playwright && npx playwright install chromium webkit
+node --test tests/*.test.mjs               # WASM signing, relay, page in real browsers
+node scripts/prepare-site.mjs https://your-relay.workers.dev   # -> web/dist
+
+# Relay: deploy by hand (token only from the environment)
+CLOUDFLARE_API_TOKEN=... PAGES_ORIGIN=https://<you>.github.io bash worker/deploy.sh
+```
+
+Fork notes: `ALLOWED_ORIGIN` in `worker/wrangler.toml` (set from `PAGES_ORIGIN` by the deploy
+script) must be your Pages origin, and the source link in `web/site/index.html` points at this repository.
+
 ## Design language
 
 "Futuristic, calm, alive": dark-first, layered glass, one signature gradient, motion that explains instead of decorates.

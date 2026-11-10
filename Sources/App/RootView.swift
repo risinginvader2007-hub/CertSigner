@@ -58,6 +58,13 @@ struct RootView: View {
                     .sheetChrome()
             }
             .onOpenURL { url in handleIncoming(url) }
+            .task {
+                // Once per signature: which certificate this copy was signed with (e.g. after the web installer).
+                guard let message = LaunchSignature.confirmationIfNew(LaunchSignature.current()) else { return }
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                toasts.show(message, kind: .success)
+                AppLog.info("launch: \(message)")
+            }
     }
 
     @ViewBuilder
