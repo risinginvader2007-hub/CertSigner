@@ -8,7 +8,7 @@
   1. `#include <openssl/...>` → `<OpenSSL/...>` to match the OpenSSL xcframework's headers.
   2. `signing.cpp`: skip the `popen("/usr/bin/csreq")` debug path when `ZSIGN_IOS` is defined.
   3. `common/log.*`: `ZLog::SetLogCallback` forwards log lines to the app.
-  4. `common/fs.cpp`: `msync` before `munmap` under `__EMSCRIPTEN__` only (the web installer's WebAssembly build; no effect on iOS).
+  4. `common/fs.cpp`: under `__EMSCRIPTEN__` only, `MapFile` / `UnmapFile` read the file into a buffer and write it back (the web installer's WebAssembly build; no effect on iOS).
 
 ## ZSignBridge (`Vendor/ZSignBridge`)
 - `zsign_api.{h,cpp}`: a C entry point (`zsign_sign_folder`) over `ZSignAsset` + `ZBundle::SignFolder`.

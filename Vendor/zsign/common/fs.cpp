@@ -6,6 +6,14 @@
 
 map<void*, void*> ZFile::s_mapFiles;
 
+#ifdef __EMSCRIPTEN__
+// CertSigner patch (WebAssembly build only): Emscripten's in-memory filesystem can't write a
+// shared mapping back once its descriptor is closed, so "mapping" a file means reading it into a
+// buffer and writing the buffer back to the same path on unmap.
+struct ZEmMapping { string path; size_t offset; bool ro; };
+static map<void*, ZEmMapping> s_emMappings;
+#endif
+
 bool ZFile::IsRegularFile(const char* path)
 {
 	struct stat st = { 0 };
@@ -38,6 +46,34 @@ void* ZFile::MapFile(const char* path, size_t offset, size_t size, size_t* psize
 			}
 		}
 		::CloseHandle(hFile);
+	}
+
+#elif defined(__EMSCRIPTEN__)
+
+	int efd = open(path, O_RDONLY);
+	if (efd >= 0) {
+		if (size <= 0) {
+			struct stat st = { 0 };
+			fstat(efd, &st);
+			size = st.st_size;
+		}
+		if (NULL != psize) {
+			*psize = size;
+		}
+		base = malloc(size > 0 ? size : 1);
+		size_t got = 0;
+		while (NULL != base && got < size) {
+			ssize_t n = pread(efd, (char*)base + got, size - got, offset + got);
+			if (n <= 0) {
+				break;
+			}
+			got += n;
+		}
+		close(efd);
+		if (NULL != base) {
+			ZEmMapping mapping = { path, offset, ro };
+			s_emMappings[base] = mapping;
+		}
 	}
 
 #else
@@ -77,11 +113,32 @@ bool ZFile::UnmapFile(void* base, size_t size)
 		return true;
 	}
 	return false;
+#elif defined(__EMSCRIPTEN__)
+	auto it = s_emMappings.find(base);
+	if (it == s_emMappings.end()) {
+		return false;
+	}
+	bool ok = true;
+	if (!it->second.ro) {
+		int efd = open(it->second.path.c_str(), O_WRONLY);
+		ok = (efd >= 0);
+		size_t put = 0;
+		while (ok && put < size) {
+			ssize_t n = pwrite(efd, (char*)base + put, size - put, it->second.offset + put);
+			if (n <= 0) {
+				ok = false;
+				break;
+			}
+			put += n;
+		}
+		if (efd >= 0) {
+			close(efd);
+		}
+	}
+	free(base);
+	s_emMappings.erase(it);
+	return ok;
 #else
-#ifdef __EMSCRIPTEN__
-	// CertSigner patch: Emscripten's in-memory filesystem only writes a MAP_SHARED mapping back on msync.
-	msync(base, size, MS_SYNC);
-#endif
 	return (0 == munmap(base, size));
 #endif
 }
