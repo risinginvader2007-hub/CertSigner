@@ -3,12 +3,18 @@ on:
   push:
     branches: [main, master]
   workflow_dispatch:
+    inputs:
+      web_only:
+        description: "Only build and test the web installer (uses the IPA from the latest release)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   build:
+    if: ${{ !inputs.web_only }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,3 +48,44 @@ jobs:
             --title "CertSigner (build ${{ github.run_number }})" \
             --notes "Unsigned build from commit ${{ github.sha }}. Install with FlareStore or any signer." \
             --latest
+
+  # "Get CertSigner" web installer: zsign compiled to WebAssembly, tested by signing the IPA
+  # built above. (Publishing to Pages and the Worker deploy are separate jobs below.)
+  web:
+    needs: build
+    if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unsigned IPA from this run
+        if: needs.build.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: CertSigner-ipa
+          path: web/site/app
+      - name: Unsigned IPA from the latest release (web-only runs)
+        if: needs.build.result != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download latest -R "${{ github.repository }}" -p CertSigner.ipa -D web/site/app
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+      - name: Cache OpenSSL for WebAssembly
+        uses: actions/cache@v4
+        with:
+          path: .wasm-build/openssl
+          key: openssl-wasm-3.3.2-emsdk-3.1.74-v1
+      - name: Build the WebAssembly signer
+        run: bash web/wasm/build.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test: sign the IPA in WebAssembly
+        run: |
+          bash web/tests/make-fixtures.sh
+          cd web && node --test tests
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-site
+          path: web/site

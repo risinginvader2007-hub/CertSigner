@@ -5,3 +5,5 @@ Payload/
 *.ipa
 .DS_Store
 Support/Info.plist
+
+.wasm-build/
