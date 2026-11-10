@@ -84,7 +84,7 @@ jobs:
       - name: Browser engines for the end-to-end test (Chromium + WebKit)
         run: |
           cd web
-          npm install --no-save --silent playwright@1.49.1
+          npm install --no-save --silent playwright@1.65.0
           npx playwright install --with-deps chromium webkit
       - name: "Tests: sign the IPA in WebAssembly, the relay, the page in real browsers"
         run: |
