@@ -84,7 +84,7 @@ jobs:
       - name: Sign the IPA in WebAssembly (tests)
         run: |
           bash web/tests/make-fixtures.sh
-          cd web && node --test tests
+          cd web && node --test tests/*.test.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: web-site
