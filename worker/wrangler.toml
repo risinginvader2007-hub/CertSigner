@@ -1,0 +1,23 @@
+# Get CertSigner install relay. Deployed by CI (see README "Web installer"); the KV namespace id
+# below is filled in by the deploy step. No secrets belong in this file.
+name = "get-certsigner"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+[vars]
+# The page's origin (comma-separated for more than one). Uploads from anywhere else are refused.
+ALLOWED_ORIGIN = "https://risinginvader2007-hub.github.io"
+
+[[kv_namespaces]]
+binding = "STORE"
+id = "KV_NAMESPACE_ID"
+
+# 5 uploads per minute per IP address.
+[[ratelimits]]
+name = "UPLOAD_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 5
+  period = 60

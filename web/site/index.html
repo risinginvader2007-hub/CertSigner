@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0b12">
+  <!-- No third-party scripts, styles, fonts or trackers. The only other origin this page may
+       talk to is the install relay, and only to send the SIGNED app. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' __RELAY_ORIGIN__; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="relay" content="__RELAY_URL__">
+  <title>Get CertSigner</title>
+  <meta name="description" content="Install CertSigner on your iPhone with your own certificate. Signed in your browser; your certificate never leaves your device.">
+  <link rel="icon" href="icon.png">
+  <link rel="apple-touch-icon" href="icon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+
+  <main>
+    <header class="hero">
+      <img class="app-icon" src="icon.png" alt="" width="96" height="96">
+      <h1>Get CertSigner</h1>
+      <p class="lede">Install CertSigner with your own certificate, straight from Safari. No other app needed.</p>
+      <p class="pill" id="app-version" hidden></p>
+    </header>
+
+    <section class="card privacy" aria-labelledby="privacy-title">
+      <h2 id="privacy-title"><span class="glyph" aria-hidden="true">🔒</span> Your certificate stays on this device</h2>
+      <p>Signing runs inside this page. Your <strong>.p12</strong>, its <strong>password</strong> and your <strong>profile</strong> are never uploaded or saved, and are cleared from memory when signing ends. Only the finished, signed app is sent to a temporary link so iOS can install it. That link is deleted within 10 minutes.</p>
+    </section>
+
+    <ol class="steps" id="steps" aria-label="Progress">
+      <li data-step="files" class="current"><span>1</span>Your files</li>
+      <li data-step="sign"><span>2</span>Sign</li>
+      <li data-step="install"><span>3</span>Install</li>
+    </ol>
+
+    <!-- 1: files -->
+    <section class="card" id="panel-files" aria-labelledby="files-title">
+      <h2 id="files-title">Your certificate and profile</h2>
+
+      <label class="file" id="p12-label">
+        <input type="file" id="p12" accept=".p12,.pfx,application/x-pkcs12">
+        <span class="tile" aria-hidden="true">🔑</span>
+        <span class="file-text"><strong>Certificate (.p12)</strong><small id="p12-name">Choose file</small></span>
+      </label>
+
+      <label class="field">
+        <span>Certificate password</span>
+        <input type="password" id="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Password for the .p12">
+      </label>
+
+      <label class="file" id="profile-label">
+        <input type="file" id="profile" accept=".mobileprovision">
+        <span class="tile" aria-hidden="true">📄</span>
+        <span class="file-text"><strong>Profile (.mobileprovision)</strong><small id="profile-name">Choose file</small></span>
+      </label>
+
+      <dl class="facts" id="facts" hidden></dl>
+      <div class="notice error" id="files-error" role="alert" hidden></div>
+      <div class="notice" id="files-notes" hidden></div>
+
+      <button class="button primary" id="sign" disabled>Check &amp; Sign</button>
+      <p class="hint" id="sign-hint">Choose both files and enter the password.</p>
+    </section>
+
+    <!-- 2: working -->
+    <section class="card" id="panel-work" hidden aria-live="polite">
+      <h2 id="work-title">Signing…</h2>
+      <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar"><i id="bar-fill"></i></div>
+      <ul class="stages" id="stages">
+        <li data-stage="read">Reading files</li>
+        <li data-stage="validate">Checking certificate and profile</li>
+        <li data-stage="sign">Signing the app</li>
+        <li data-stage="upload">Preparing the install link</li>
+      </ul>
+    </section>
+
+    <!-- 3: ready -->
+    <section class="card" id="panel-ready" hidden aria-labelledby="ready-title">
+      <h2 id="ready-title">Ready to install</h2>
+      <p id="ready-summary"></p>
+      <a class="button primary" id="install" href="#" hidden>Install CertSigner</a>
+      <p class="hint" id="install-hint" hidden></p>
+      <a class="button secondary" id="download" download="CertSigner-signed.ipa" href="#">Download signed IPA</a>
+      <div class="next" id="next" hidden>
+        <h3>What happens next</h3>
+        <ol>
+          <li>Tap <strong>Install</strong> on the iOS prompt, then go to your Home Screen. CertSigner appears there while it installs.</li>
+          <li>If iOS says the developer is not trusted: <strong>Settings › General › VPN &amp; Device Management</strong>, tap your certificate, then <strong>Trust</strong>.</li>
+          <li>If it says “Unable to Install”: this iPhone's UDID is probably not in your profile, or the certificate was revoked.</li>
+          <li>Open CertSigner. It confirms which certificate signed it, and from then on it re-signs itself.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- failure -->
+    <section class="card" id="panel-error" hidden aria-labelledby="error-title">
+      <h2 id="error-title">Something went wrong</h2>
+      <p class="notice error" id="error-message" role="alert"></p>
+      <button class="button primary" id="retry">Try Again</button>
+    </section>
+
+    <div class="row" id="tools" hidden>
+      <button class="button secondary compact" id="reset">Start Over</button>
+      <button class="button secondary compact" id="share-log">Share signing log</button>
+    </div>
+
+    <details class="card log" id="log-card" hidden>
+      <summary>Signing log</summary>
+      <pre id="log"></pre>
+    </details>
+
+    <section class="card faq">
+      <h2>Good to know</h2>
+      <details><summary>What do I need?</summary><p>A signing certificate exported as <strong>.p12</strong> with its password, and a <strong>.mobileprovision</strong> profile made for that certificate. For a development or ad hoc profile, this iPhone's UDID must be in it.</p></details>
+      <details><summary>Does the bundle ID change?</summary><p>With a wildcard profile CertSigner keeps its own bundle ID. With a profile for one specific App ID, CertSigner is signed with that ID so iOS accepts it.</p></details>
+      <details><summary>What if my certificate was revoked?</summary><p>Signing still works here, because a browser can't ask Apple. iOS checks when you open the app and will refuse to launch it.</p></details>
+      <details><summary>Privacy</summary><p>This page has no accounts, analytics, cookies or third-party code. It stores nothing about you. The temporary install link holds only the signed app, for at most 10 minutes (2 minutes after iOS downloads it), and its contents are never logged.</p></details>
+    </section>
+
+    <footer>
+      <p>CertSigner is open source. <a href="https://github.com/risinginvader2007-hub/CertSigner" rel="noopener">Source code</a></p>
+      <noscript><p class="notice error">This page needs JavaScript and WebAssembly to sign the app on your device.</p></noscript>
+    </footer>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

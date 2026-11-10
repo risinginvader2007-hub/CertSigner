@@ -91,7 +91,7 @@ export function parseBinaryPlist(bytes) {
       case 0x3: return new Date((view.getFloat64(at) + 978307200) * 1000);
       case 0x4: { const n = length(); return bytes.slice(at, at + n); }
       case 0x5: { const n = length(); return new TextDecoder('ascii').decode(bytes.subarray(at, at + n)); }
-      case 0x6: { const n = length(); return new TextDecoder('utf-16be').decode(bytes.subarray(at, at + n * 2)); }
+      case 0x6: { const n = length(); let out = ''; for (let k = 0; k < n; k++) out += String.fromCharCode(view.getUint16(at + k * 2)); return out; }
       case 0xA: { const n = length(); const list = []; for (let k = 0; k < n; k++) list.push(read(uint(at + k * refSize, refSize), depth + 1)); return list; }
       case 0xD: {
         const n = length(), dict = {};

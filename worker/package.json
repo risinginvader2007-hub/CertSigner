@@ -1,0 +1,5 @@
+{
+  "name": "get-certsigner-relay",
+  "private": true,
+  "type": "module"
+}

@@ -81,11 +81,78 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Sign the IPA in WebAssembly (tests)
+      - name: Browser engines for the end-to-end test (Chromium + WebKit)
+        run: |
+          cd web
+          npm install --no-save --silent playwright@1.49.1
+          npx playwright install --with-deps chromium webkit
+      - name: "Tests: sign the IPA in WebAssembly, the relay, the page in real browsers"
         run: |
           bash web/tests/make-fixtures.sh
           cd web && node --test tests/*.test.mjs
       - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-test-screenshots
+          path: web/test-results
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-site
+          path: |
+            web/site/wasm
+            web/site/app
+
+  # Install relay (Cloudflare Worker). Runs only on main and only when the repository has the
+  # CLOUDFLARE_API_TOKEN secret; without it this job does nothing and the page offers the
+  # signed IPA as a download instead of one-tap install.
+  relay:
+    needs: web
+    if: ${{ always() && needs.web.result == 'success' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: deploy
+        name: Deploy the Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PAGES_ORIGIN: https://${{ github.repository_owner }}.github.io
+        run: bash worker/deploy.sh
+
+  # Publishes the page, the WebAssembly signer and a same-origin copy of the unsigned IPA to GitHub Pages.
+  pages:
+    needs: [web, relay]
+    if: ${{ always() && needs.web.result == 'success' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
           name: web-site
           path: web/site
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the site
+        env:
+          RELAY_URL: ${{ needs.relay.outputs.url || vars.RELAY_URL }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: node web/scripts/prepare-site.mjs
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
