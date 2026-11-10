@@ -21,7 +21,7 @@ enum LaunchSignature {
     }
 
     static func info(profileData: Data) -> Info? {
-        guard let profile = try? ProvisioningProfile.parse(data: profileData) else { return nil }
+        guard let profile = try? ProfileParser.parse(data: profileData) else { return nil }
         let certificateName = profile.developerCertificates.first
             .flatMap { SecCertificateCreateWithData(nil, $0 as CFData) }
             .flatMap { SecCertificateCopySubjectSummary($0) as String? }
