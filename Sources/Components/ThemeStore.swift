@@ -17,6 +17,7 @@ final class ThemeStore: ObservableObject {
     struct State: Equatable {
         var accent: Color
         var gradient: [Color]
+        var onAccent: Color = .white
         var fade: ThemeFade?
     }
 
@@ -25,19 +26,26 @@ final class ThemeStore: ObservableObject {
     var accent: Color { state.accent }
     var gradient: [Color] { state.gradient }
     var fade: ThemeFade? { state.fade }
+    /// Black or white: the label colour for content on the accent gradient.
+    var onAccent: Color { state.onAccent }
     /// True while a colour transition runs (the background holds its drift still meanwhile).
     var isTransitioning: Bool { state.fade != nil }
 
-    private var option: AccentOption
+    private var option: Accent
     private var finishTask: Task<Void, Never>?
 
-    init(option: AccentOption) {
-        self.option = option
-        state = State(accent: option.color, gradient: option.gradient, fade: nil)
+    init(accent: Accent) {
+        option = accent
+        state = State(accent: accent.tint, gradient: accent.gradient, onAccent: accent.onAccent, fade: nil)
     }
 
+    convenience init(option: AccentOption) { self.init(accent: Accent(option)) }
+
+    func apply(_ option: AccentOption, animated: Bool = true) { apply(Accent(option), animated: animated) }
+
+
     /// Fades from what is on screen right now (also mid-fade) to `newOption`.
-    func apply(_ newOption: AccentOption, animated: Bool = true) {
+    func apply(_ newOption: Accent, animated: Bool = true) {
         guard newOption != option else { return }
         let traits = Self.currentTraits
         let now = CACurrentMediaTime()
@@ -45,7 +53,8 @@ final class ThemeStore: ObservableObject {
         option = newOption
         let fade = ThemeFade(from: fromStops, to: Self.samples(newOption.gradient, traits: traits),
                              start: now, duration: Self.transitionDuration)
-        let next = State(accent: newOption.color, gradient: newOption.gradient, fade: animated ? fade : nil)
+        let next = State(accent: newOption.tint, gradient: newOption.gradient, onAccent: newOption.onAccent,
+                         fade: animated ? fade : nil)
         if animated {
             AuroraClock.shared.hold("theme", true)
             withAnimation(.easeInOut(duration: Self.transitionDuration)) { state = next }

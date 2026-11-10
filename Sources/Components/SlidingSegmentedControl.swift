@@ -22,6 +22,7 @@ struct SlidingSegmentedControl<Value: Hashable>: View {
 
     @Environment(\.themeAccent) private var accent
     @Environment(\.themeGradient) private var gradient
+    @Environment(\.themeOnAccent) private var onAccent
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isEnabled) private var isEnabled
     @Namespace private var namespace
@@ -94,7 +95,7 @@ struct SlidingSegmentedControl<Value: Hashable>: View {
                 .minimumScaleFactor(0.75)
         }
         .font(TypeScale.subheadline.weight(.semibold))
-        .foregroundColor(selected ? .white : SemanticColor.textSecondary)
+        .foregroundColor(selected ? onAccent : SemanticColor.textSecondary)
         .padding(.horizontal, Space.x2)
         .frame(maxWidth: .infinity, minHeight: 40)
         .background {

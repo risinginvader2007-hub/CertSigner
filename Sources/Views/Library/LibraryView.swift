@@ -545,6 +545,7 @@ struct SignedAppListRow: View {
     let onResign: () -> Void
 
     @Environment(\.themeAccent) private var accent
+    @Environment(\.themeOnAccent) private var onAccent
     @Environment(\.themeGradient) private var gradient
 
     private var lifetimeRemaining: Double? {
@@ -624,7 +625,7 @@ struct SignedAppListRow: View {
             .lineLimit(1)
             .frame(maxWidth: .infinity)
             .padding(.vertical, Space.x2)
-            .foregroundColor(filled ? .white : accent)
+            .foregroundColor(filled ? onAccent : accent)
             .frame(minHeight: 36)
             .background(
                 Capsule().fill(filled

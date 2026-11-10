@@ -14,9 +14,10 @@ struct RootView: View {
     @EnvironmentObject private var library: LibraryStore
     @EnvironmentObject private var queue: SigningQueue
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
-    @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .aurora
+    /// The selected accent's id (original accents keep their old stored value as their id).
+    @AppStorage(SettingsKeys.accent) private var accent = Accent.defaultID
     /// Live theme colours: fades every view together when the accent changes.
-    @StateObject private var theme = ThemeStore(option: AccentOption(rawValue: UserDefaults.standard.string(forKey: SettingsKeys.accent) ?? "") ?? .aurora)
+    @StateObject private var theme = ThemeStore(accent: Accent.resolve(id: UserDefaults.standard.string(forKey: SettingsKeys.accent)))
     @Environment(\.scenePhase) private var scenePhase
     /// The animated intro plays once, on first launch.
     @AppStorage("ui.introSeen") private var introSeen = false
@@ -36,8 +37,9 @@ struct RootView: View {
             .environment(\.themeAccent, theme.accent)
             .environment(\.themeGradient, theme.gradient)
             .environment(\.themeFade, theme.fade)
+            .environment(\.themeOnAccent, theme.onAccent)
             .environmentObject(theme)
-            .onChange(of: accent) { newValue in theme.apply(newValue) }
+            .onChange(of: accent) { newValue in theme.apply(Accent.resolve(id: newValue)) }
             .onChange(of: scenePhase) { phase in AuroraClock.shared.setRunning(phase == .active) }
             .preferredColorScheme(appearance.colorScheme)
             .roundedDesign()

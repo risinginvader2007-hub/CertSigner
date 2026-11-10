@@ -7,7 +7,7 @@ struct SettingsView: View {
     @EnvironmentObject private var importer: ImportCoordinator
     @EnvironmentObject private var toasts: ToastCenter
     @AppStorage(SettingsKeys.appearance) private var appearance: AppearanceOption = .system
-    @AppStorage(SettingsKeys.accent) private var accent: AccentOption = .aurora
+    @AppStorage(SettingsKeys.accent) private var accent = Accent.defaultID
     @AppStorage(SettingsKeys.deviceUDID) private var udid = ""
     @AppStorage(SettingsKeys.installMethod) private var installMethod: InstallMethod = .automatic
     @AppStorage(SettingsKeys.autoInstall) private var autoInstall = false
@@ -431,62 +431,228 @@ struct SettingsView: View {
     }
 }
 
-/// Accent swatches. One selection ring slides from the old swatch to the new one
-/// (matchedGeometryEffect follower driven by local state, so it animates with @AppStorage too).
+/// Accent swatches, grouped Solid / Blended with a sliding switch. One selection ring slides from
+/// the old swatch to the new one (matchedGeometryEffect follower driven by local state, so it
+/// animates with @AppStorage too). Blended ends with the user's custom blends and "+".
 struct AccentPicker: View {
-    @Binding var selection: AccentOption
+    @Binding var selection: String
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var library = AccentLibrary.shared
     @Namespace private var namespace
-    @State private var shown: AccentOption?
+    @State private var shown: String?
+    @State private var group: Accent.Group
+    @State private var showCustom = false
 
-    private var current: AccentOption { shown ?? selection }
+    init(selection: Binding<String>) {
+        _selection = selection
+        _group = State(initialValue: Accent.resolve(id: selection.wrappedValue).group)
+    }
+
+    private var currentID: String { shown ?? selection }
+    private var current: Accent { Accent.resolve(id: currentID) }
+    private var visible: [Accent] { group == .solid ? Accent.solids : Accent.blends + library.customs }
+    private var animation: Animation { reduceMotion ? Motion.fade : Motion.selection }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Space.x3) {
-                ForEach(AccentOption.allCases) { option in
-                    let selected = current == option
-                    Button {
-                        guard option != selection else { return }
-                        Haptics.selection()
-                        withAnimation(reduceMotion ? Motion.fade : Motion.selection) {
-                            shown = option
-                            selection = option
-                        }
-                    } label: {
-                        ZStack {
-                            Circle()
-                                .fill(LinearGradient(colors: option.gradient, startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .frame(width: 32, height: 32)
-                            Image(systemName: "checkmark")
-                                .font(.caption.weight(.bold))
-                                .foregroundColor(.white)
-                                .scaleEffect(selected ? 1 : 0.4)
-                                .opacity(selected ? 1 : 0)
-                        }
-                        .frame(width: 44, height: 44)
-                        .background(
-                            Circle().fill(Color.clear).frame(width: 42, height: 42)
-                                .matchedGeometryEffect(id: option, in: namespace, properties: .frame, isSource: true)
-                        )
+        VStack(alignment: .leading, spacing: Space.x3) {
+            SlidingSegmentedControl(
+                selection: $group,
+                options: Accent.Group.allCases.map { .init(value: $0, title: $0.title) },
+                accessibilityTitle: "Accent type"
+            )
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Space.x3) {
+                    ForEach(visible) { option in
+                        swatch(option)
                     }
-                    .buttonStyle(PressableButtonStyle(scale: 0.85))
-                    .accessibilityLabel(option.title)
-                    .accessibilityAddTraits(selected ? .isSelected : [])
+                    if group == .blended { addButton }
+                }
+                .background {
+                    if visible.contains(where: { $0.id == currentID }) {
+                        Circle()
+                            .strokeBorder(current.tint, lineWidth: 2.5)
+                            .matchedGeometryEffect(id: currentID, in: namespace, properties: .frame, isSource: false)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(.vertical, Space.hair)
+                .padding(.horizontal, Space.hair)
+            }
+            .id(group)
+            .transition(.opacity)
+            HStack(spacing: Space.x2) {
+                Capsule()
+                    .fill(LinearGradient(colors: current.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 28, height: 10)
+                Text(current.name)
+                    .font(TypeScale.caption)
+                    .foregroundColor(SemanticColor.textSecondary)
+                    .lineLimit(1)
+                if current.isCustom {
+                    Text("· hold its swatch to delete")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
             }
-            .background {
-                Circle()
-                    .strokeBorder(current.color, lineWidth: 2.5)
-                    .matchedGeometryEffect(id: current, in: namespace, properties: .frame, isSource: false)
-            }
-            .padding(.vertical, Space.hair)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Selected accent: \(current.name)")
         }
+        .animation(Motion.fade, value: group)
         .onChange(of: selection) { newValue in
             guard shown != newValue else { return }
-            withAnimation(reduceMotion ? Motion.fade : Motion.selection) { shown = newValue }
+            withAnimation(animation) { shown = newValue }
         }
+        .sheet(isPresented: $showCustom) {
+            CustomBlendSheet { name, hex in
+                let accent = library.add(name: name, hex: hex)
+                select(accent.id)
+            }
+            .sheetChrome()
+        }
+    }
+
+    private func select(_ id: String) {
+        guard id != selection else { return }
+        Haptics.selection()
+        withAnimation(animation) {
+            shown = id
+            selection = id
+        }
+    }
+
+    @ViewBuilder
+    private func swatch(_ option: Accent) -> some View {
+        let selected = currentID == option.id
+        let button = Button {
+            select(option.id)
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(colors: option.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "checkmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(option.onAccent)
+                    .scaleEffect(selected ? 1 : 0.4)
+                    .opacity(selected ? 1 : 0)
+            }
+            .frame(width: 44, height: 44)
+            .background(
+                Circle().fill(Color.clear).frame(width: 42, height: 42)
+                    .matchedGeometryEffect(id: option.id, in: namespace, properties: .frame, isSource: true)
+            )
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.85))
+        .accessibilityLabel(option.name)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+
+        if option.isCustom {
+            // Long press: delete this custom blend.
+            button.contextMenu {
+                Button(role: .destructive) {
+                    Haptics.impact(.light)
+                    if selection == option.id { select(Accent.defaultID) }
+                    withAnimation(Motion.smooth) { library.delete(option.id) }
+                } label: {
+                    Label("Delete \(option.name)", systemImage: "trash")
+                }
+            }
+        } else {
+            button
+        }
+    }
+
+    private var addButton: some View {
+        Button {
+            Haptics.impact(.light)
+            showCustom = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.subheadline.weight(.bold))
+                .foregroundColor(SemanticColor.textSecondary)
+                .frame(width: 32, height: 32)
+                .background(Circle().strokeBorder(Color.primary.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(PressableButtonStyle(scale: 0.85))
+        .accessibilityLabel("Custom blend")
+    }
+}
+
+/// "Custom blend": two colours, a live preview, a name, Save.
+struct CustomBlendSheet: View {
+    let onSave: (_ name: String, _ hex: [String]) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var first = Color(red: 0.0, green: 0.71, blue: 0.86)
+    @State private var second = Color(red: 0.77, green: 0.3, blue: 1.0)
+    @State private var name = ""
+
+    private var hex: [String] {
+        let traits = UITraitCollection(userInterfaceStyle: .light)
+        return [RGBA(first, traits: traits).hex, RGBA(second, traits: traits).hex]
+    }
+
+    var body: some View {
+        // Live preview: the swatch, a button and small text exactly as the app will draw them.
+        let accent = Accent(id: "preview", name: name, hex: hex)
+        return NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Space.x5) {
+                    VStack(spacing: Space.x4) {
+                        Circle()
+                            .fill(LinearGradient(colors: accent.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 84, height: 84)
+                            .overlay(Circle().strokeBorder(Color.white.opacity(0.25), lineWidth: Border.width))
+                        Text("Preview")
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(accent.onAccent)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: AppButtonStyle.height)
+                            .background(Capsule().fill(LinearGradient(colors: accent.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)))
+                        Label("Small text and icons use this colour", systemImage: "paintbrush.pointed.fill")
+                            .font(TypeScale.caption)
+                            .foregroundColor(accent.tint)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(Space.x4)
+                    .cardBackground()
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Gradient preview")
+
+                    VStack(spacing: 0) {
+                        ColorPicker("Start colour", selection: $first, supportsOpacity: false)
+                            .padding(.vertical, Space.x3)
+                        SoftDivider()
+                        ColorPicker("End colour", selection: $second, supportsOpacity: false)
+                            .padding(.vertical, Space.x3)
+                        SoftDivider()
+                        TextField("Name (optional)", text: $name)
+                            .padding(.vertical, Space.x3)
+                    }
+                    .padding(.horizontal, Space.x4)
+                    .cardBackground()
+
+                    PrimaryButton(title: "Save Blend", systemImage: "checkmark") {
+                        onSave(name, hex)
+                        dismiss()
+                    }
+                }
+                .padding(Theme.padding)
+            }
+            .navigationTitle("Custom Blend")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.large])
     }
 }
 

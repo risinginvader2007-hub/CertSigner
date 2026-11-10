@@ -44,6 +44,7 @@ private struct AppButtonBody: View {
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.themeAccent) private var accent
     @Environment(\.themeGradient) private var themeGradient
+    @Environment(\.themeOnAccent) private var onAccent
     @Environment(\.colorSchemeContrast) private var contrast
 
     private var fillColors: [Color] {
@@ -56,7 +57,9 @@ private struct AppButtonBody: View {
     }
 
     private var foreground: Color {
-        kind == .secondary && feedback == nil ? accent : .white
+        if kind == .secondary && feedback == nil { return accent }
+        // On the accent gradient: black or white, whichever is readable. Red and feedback fills stay white.
+        return kind == .primary && feedback == nil && accent != Theme.danger ? onAccent : .white
     }
 
     var body: some View {
