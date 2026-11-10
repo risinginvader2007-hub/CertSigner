@@ -81,7 +81,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Test: sign the IPA in WebAssembly
+      - name: Sign the IPA in WebAssembly (tests)
         run: |
           bash web/tests/make-fixtures.sh
           cd web && node --test tests
