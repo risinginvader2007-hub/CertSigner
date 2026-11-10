@@ -98,6 +98,7 @@ test('signs CertSigner.ipa: wildcard keeps the bundle ID, explicit rewrites it',
       .map((m) => `${m}=${contains(files[executable], m)}`).join(', ');
     console.log(`${profileName}: markers in the signed binary: ${markers}; binary ${originalFiles[executable].length} -> ${files[executable].length} bytes`);
     assert.ok(contains(files[executable], 'ABCDE12345'), 'signature carries the team ID');
+    assert.ok(contains(files[executable], 'Web Test main'), 'signature carries the certificate');
     assert.ok(contains(files[executable], 'ABCDE12345.' + (profile.isWildcard ? '*' : expectedID)), 'entitlements carry the profile App ID');
     const nested = Object.keys(files).filter((n) => /\.(framework|appex)\/_CodeSignature\/CodeResources$/.test(n));
     const nestedOriginal = Object.keys(originalFiles).filter((n) => /\.(framework|appex)\/Info\.plist$/.test(n));

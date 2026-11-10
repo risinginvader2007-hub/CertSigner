@@ -78,6 +78,10 @@ bool ZFile::UnmapFile(void* base, size_t size)
 	}
 	return false;
 #else
+#ifdef __EMSCRIPTEN__
+	// CertSigner patch: Emscripten's in-memory filesystem only writes a MAP_SHARED mapping back on msync.
+	msync(base, size, MS_SYNC);
+#endif
 	return (0 == munmap(base, size));
 #endif
 }
