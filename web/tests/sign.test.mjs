@@ -82,6 +82,8 @@ test('signs CertSigner.ipa: wildcard keeps the bundle ID, explicit rewrites it',
       onLog: (message) => log.push(message),
     });
     console.log(`${profileName}: signed in ${Date.now() - started} ms, ${result.ipa.length} bytes, bundle ID ${result.bundleID}, ${log.length} log lines`);
+    console.log(log.map((l) => '  zsign| ' + l.trimEnd()).join('
+'));
     assert.equal(result.bundleID, expectedID);
     assert.equal(result.version, original.version);
 
