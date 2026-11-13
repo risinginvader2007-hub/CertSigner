@@ -38,7 +38,11 @@ final class ThemeStoreTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(later.1, earlier.1 - 0.001, "moves steadily (no flicker)")
         }
 
-        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+        // Wait for the clean-up publish itself (not a fixed time: slow CI runners missed 0.6 s).
+        let deadline = Date().addingTimeInterval(5)
+        while store.fade != nil && Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
         token.cancel()
         XCTAssertNil(store.fade, "the fade is cleared when it ends")
         XCTAssertEqual(store.gradient, AccentOption.orange.gradient)
