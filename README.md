@@ -22,8 +22,9 @@ Open it in Safari on your iPhone, then share the file to FlareStore (or any sign
 ### 1. Add a certificate (Settings → Certificates, or the Home card)
 - Tap **Add Certificate**, pick your `.p12`, your `.mobileprovision`, enter a nickname and the `.p12` password.
 - The password is checked straight away and stored only in the iOS Keychain.
-- Certificate details: team, profile type, App ID, devices, entitlements, expiry, and whether the `.p12` is in the profile.
-- **Switch** the active certificate from Home or Settings. Sharing a `.p12` / `.mobileprovision` to CertSigner opens the import sheet too.
+- Certificate details: team, profile type, App ID, devices, entitlements, expiry, whether the `.p12` is in the profile, and **Raw Profile Data** (the `application-identifier` and where it came from).
+- **Switch** the active certificate from Home or Settings (a bottom sheet). Sharing a `.p12` / `.mobileprovision` to CertSigner opens the import sheet too.
+- Installed CertSigner from the web installer? Tap **Import Certificate into CertSigner** on that page to bring the same certificate into the app.
 - Paste your **UDID** in Settings → This Device so CertSigner can check your iPhone is in each profile (sideloaded apps can't read it themselves).
 
 ### 2. Home
@@ -36,11 +37,14 @@ Open it in Safari on your iPhone, then share the file to FlareStore (or any sign
 - Shows the icon, name, bundle ID, version, size and extensions read from the IPA.
 - Options: display name, version, **keep original bundle ID** or set a new one (explicit profiles pre-fill their exact App ID), remove app extensions, remove the Watch app.
 - **Pre-sign checks**: certificate not expired, `.p12` matches the profile, bundle ID (and extensions) allowed by the App ID, this iPhone's UDID in the profile. Failing checks block signing with a clear reason.
+- **Signing mode** (per app; default in Settings):
+  - *Compatibility* (default): keeps the app's bundle ID, signs every extension, framework and dylib, and skips the App ID mismatch checks (like FlareStore).
+  - *Strict*: rewrites the bundle ID and blocks signing when the App ID doesn't match.
 - **Install when done** starts the install prompt automatically after signing.
 
 ### 4. Library
-- **Signing**: live jobs with step progress (Unpacking → Patching → Signing → Packaging) and a progress ring. Tap a job for the live log. Failed jobs show the reason with **Retry** / **Remove**. Jobs survive relaunch (an interrupted job is marked failed so you can retry).
-- **Signed Apps**: icon, version, certificate used, status badge (valid / expiring / expired) and expiry countdown, with **Install**, **Re-sign** (with the active certificate, replaces the old copy) and **Share**. Swipe left to delete, right to re-sign. Search, sort (date, name, expiry) and filter (status, certificate).
+- **Signing**: live jobs with step progress (Unpacking → Patching → Signing → Packaging) and a progress ring. Tap a job for the live log (**Share signing log** for a detailed copy). Failed jobs show the reason with **Retry** / **Remove**. Jobs survive relaunch (an interrupted job is marked failed so you can retry).
+- **Signed Apps**: icon, version, certificate used, status badge (valid / expiring / expired) and expiry countdown, with **Install**, **Re-sign** (with the active certificate, replaces the old copy) and **Share**. Swipe left to delete (with **Undo** for 5 s), right to re-sign. Search, and **Sort & Filter** (date, name, expiry; status, certificate).
 - The Library tab badge counts signed apps that are expiring or expired.
 
 ### 5. Sources
@@ -54,7 +58,9 @@ Open it in Safari on your iPhone, then share the file to FlareStore (or any sign
 - CertSigner serves the signed IPA from the phone's loopback interface and opens `itms-services://`; iOS shows its install prompt.
 - **Settings → Install** picks the method: *Automatic* (default), *Fully Local (HTTPS)* or *Semi-Local*.
   - Fully Local needs a trusted certificate for a hostname that resolves to 127.0.0.1: the public backloop.dev certificate (when valid) or your own domain (see below).
-  - Semi-Local serves the IPA locally and gets only the small manifest from `api.palera.in` (needs internet).
+    The backloop.dev certificate expired on 2026-10-29; until it is renewed, Automatic uses Semi-Local unless you add your own.
+  - Semi-Local serves the IPA locally and gets only the small manifest from `api.palera.in` (needs internet). If that service is down, CertSigner falls back to Fully Local (setting, on by default).
+- The install sheet follows what iOS actually requests. If iOS doesn't ask for the app, it offers **Reopen Prompt** and **Try Again**; after the download it confirms the app is installed, and it tells you when an app with the same ID is already installed (update in place, or from a different team: delete it first). **Share Install Log** helps with reports.
 
 #### Using your own domain for Fully Local
 1. Add a DNS **A record** such as `install.example.com → 127.0.0.1` (Cloudflare: proxy off).
@@ -63,7 +69,7 @@ Open it in Safari on your iPhone, then share the file to FlareStore (or any sign
 4. Renew before it expires (Let's Encrypt: 90 days) and import again.
 
 ### 7. Settings
-Certificates, signing defaults (remove extensions, keep bundle ID), install after signing, delete original IPA after signing, install method, UDID, appearance (system / light / dark), accent colour, **app icon** (Ocean, Sunset, Mint, Midnight), storage usage with Clear Cache and Remove Unused Imports, **Export Log File**, and About.
+Certificates, signing defaults (signing mode, remove extensions, keep bundle ID), install after signing, delete original IPA after signing, install method and server certificates, close the install sheet automatically, UDID, appearance (system / light / dark), accent colour (solid colours, blends and your own custom blends), background animation, **app icon** (Ocean, Sunset, Mint, Midnight), a **storage dashboard** (usage by category, Clear Cache, Remove Unused Imports, Clear Log), **Export Log File**, and About.
 
 ## Web installer ("Get CertSigner")
 
@@ -114,6 +120,10 @@ in the profile, or the profile or certificate has expired. On first launch the a
 3. Push to `main` (or re-run the "Build IPA" workflow). CI creates the KV namespace, deploys the
    Worker, and publishes the page with the Worker's URL in it.
 
+> **This repository today:** the Worker was deployed by hand (wrangler OAuth) and there is no
+> `CLOUDFLARE_API_TOKEN` secret, so CI skips the relay deploy and the page takes the relay URL from
+> the `RELAY_URL` variable. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#8-infrastructure-and-external-services).
+
 Without the Cloudflare secret everything else still works: the page signs and offers
 "Download signed IPA", and says one-tap install is not set up.
 
@@ -142,24 +152,13 @@ script) must be your Pages origin, and the source link in `web/site/index.html` 
 
 "Futuristic, calm, alive": dark-first, layered glass, one signature gradient, motion that explains instead of decorates.
 
-- **Colour**: near-black base with lifted depth layers (`Theme.background`, `surface`, `surfaceRaised`) and an airy light mode. The default **Aurora** accent is a deep indigo → electric violet → cyan gradient (`Theme.signature`); every accent in Settings has its own gradient (`AccentOption.gradient`, exposed as the `themeGradient` environment value). Semantic success / warning / danger colours are tuned to glow slightly on dark surfaces.
-- **Surfaces**: cards use `CardSurface`: depth fill, soft top inner highlight, gradient hairline border, gentle shadow (stronger borders with Increase Contrast). Screens sit on `AuroraBackground`: three large radial gradients drifting slowly (no blur filters; static with Reduce Motion; paused on hidden tabs). Liquid Glass (`glassEffect`) is used on iOS 26, with material + highlight + hairline fallbacks (opaque with Reduce Transparency).
-- **Type**: SF Rounded everywhere, tabular digits for numbers, tight tracking on large numbers and titles.
-- **Shape and spacing**: 4/8 pt grid (`Space.x1…x8`), one continuous-corner scale (`Radius.xs 8, sm 12, md 16, lg 22, xl 28`), 44 pt minimum touch targets on custom controls.
-- **Icons**: SF Symbols with symbol effects on iOS 17+ (`symbolBounce`, `symbolPulse`, `symbolVariableColor`, `symbolReplace`), all no-ops with Reduce Motion or on iOS 16.
-- **Controls**: glowing gradient primary buttons with a lit edge and success/error morph, sliding glass segmented control, focus-glow text fields, gradient progress rings/bars, expiry rings, swipe-to-dismiss toasts, consistent sheet chrome (grabber, large corners).
+- **Colour**: near-black base with lifted depth layers and an airy light mode. Accents are solid colours or multi-colour blends (16 presets plus your own), with labels kept readable (4.5:1) on every gradient. An accent change cross-fades once over 0.35 s.
+- **Surfaces**: layered cards with a soft highlight and hairline border over a living "aurora" background (one Canvas, 30 fps, holds still while scrolling, with a sheet up, in Low Power Mode and with Reduce Motion). Liquid Glass on iOS 26, with material fallbacks before (opaque with Reduce Transparency).
+- **Type**: SF Rounded everywhere, tabular digits for numbers.
+- **Shapes**: two only: 52 pt capsule buttons for actions, rows inside one rounded card for navigation and information. Every choice of 2–5 options is a sliding control.
+- **Motion**: springs for taps, selection and layout; one shared delete animation; every movement becomes a short fade with Reduce Motion. Progress numbers never animate.
 
-### Motion tokens (`Motion` in Theme.swift)
-| Token | Curve | Used for |
-|---|---|---|
-| `snappy` | spring 0.28 s, damping 0.82 | taps, toggles, selection pills, segmented control |
-| `smooth` | spring 0.45 s, damping 0.86 | layout changes, cards, staggered entrances (`Theme.spring`) |
-| `bouncy` | spring 0.5 s, damping 0.66 | confirmations, badges, icons popping in (`Theme.bouncy`) |
-| `gentle` | ease-in-out 0.6 s | ambient glows, breathing |
-| `quick` / `standard` / `slow` | 0.18 / 0.3 / 0.6 s | fades and timed transitions |
-| `stagger` | 0.05 s | delay between items in staggered lists |
-
-`Motion.adaptive(_:reduceMotion:)` turns any of them into a short cross-fade when Reduce Motion is on. Progress numbers never animate (they update in place).
+Tokens, components and rules: [`DESIGN.md`](DESIGN.md).
 
 ### What you'll see
 - First launch: a one-time animated intro (tap or Skip), on the same colour as the launch screen.
@@ -174,21 +173,23 @@ script) must be your Pages origin, and the source link in `web/site/index.html` 
 
 ```
 Sources/
-  App/         CertSignerApp (stores wired in init), RootView (floating tab bar shell)
-  Models/      Certificate, ProvisioningProfile, LibraryApp, Repository (+ parser), SigningOptions/SignedApp, SigningStep, InstallMethod
-  Services/    CertificateStore, LibraryStore (staged imports), SignedAppsStore, RepositoryStore (sources + downloads), SigningQueue, SigningPipeline (worker),
-               AppBundlePatcher, SigningValidator, IPAInspector, ZSignService, InstallSession, LocalHTTPServer,
-               ServerCertificateStore, Keychain, P12Inspector, DERCertificateParser, AppLog, StorageService
+  App/         CertSignerApp (stores wired in init), RootView (tab shell, URL handling, root sheets)
+  Models/      Certificate, ProvisioningProfile (+ ProfileParser), LibraryApp, Repository, SigningOptions (+ SigningMode), SigningStep, InstallMethod
+  Services/    certificates, signing pipeline + queue (zsign), library and storage, install session + local server, sources, web hand-off
   Views/       Home, Library, Sources, Certificates, Install, Settings, Search
-  Components/  Theme (tokens + Motion), DesignSystem (glass, aurora, glow, symbol effects, controls), IntroOverlay, FloatingTabBar, PrimaryButton, Card, StatusBadge, ProgressRing/Bar, EmptyStateView,
-               AppIconView, ToastView, DocumentPicker, Effects (shimmer, shake, checkmark draw-in, zoom transition)
-  Resources/   Assets.xcassets (original app icons)
-Vendor/        zsign (MIT, patched for iOS) + Objective-C++ bridge + TLS helper — see Vendor/README.md
+  Components/  design system: tokens, theme, aurora background, buttons, cards, sliding control, toasts, tab bar
+  Resources/   Assets.xcassets (app icons)
+Vendor/        zsign (MIT, patched) + Objective-C++ bridge + TLS helper — see Vendor/README.md
+web/, worker/  the web installer and its install relay
 ```
+
+Details (files, flows, CI, infrastructure): [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Current status and remaining work: [`docs/STATUS.md`](docs/STATUS.md).
+Why things are built this way: [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 Storage lives in the app's Documents folder: `Certificates/`, `Library/` (staged imports), `Signed/`, `Signing/queue.json`, `Sources/sources.json`, `Server/`, `Logs/`.
 
 ## Limits of a sideloaded app
 - No UDID access (paste it in Settings).
-- CertSigner can't see whether iOS finished installing; it reports up to the point iOS has the IPA.
-- No private APIs or special entitlements.
+- Confirming that iOS finished installing, and the alert-free app icon change, use private iOS APIs. They are checked before use and skipped when unavailable, in which case CertSigner reports up to the point iOS has the IPA, and the icon change shows the usual system alert.
+- No special entitlements.

@@ -167,7 +167,8 @@ never a white or black flash, even when switching quickly and repeatedly.
 - Never publish per frame from an `ObservableObject` the whole tree reads. Animate one value
   with `withAnimation`; views that draw every frame (Canvas) interpolate locally.
 - The background is one Canvas at 30 fps that holds still while scrolling, with a sheet up,
-  during accent changes, in Low Power Mode, with Reduce Motion and on hidden tabs
-  (`BackgroundActivity`, `AuroraClock` holds).
+  in Low Power Mode, with Reduce Motion, with the background animation setting off and on hidden
+  tabs (`BackgroundActivity`, `AuroraClock` holds). An accent change redraws it for the 0.35 s fade
+  (colours blended from `ThemeFade`) even while the drift is held.
 - Shadows go on a single base shape, not on layered groups. No looping effects (shine sweep)
   on repeated list rows.
