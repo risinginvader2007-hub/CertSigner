@@ -50,6 +50,18 @@ jobs:
             codesign -dvv "$item" 2>&1 | grep -E "^(Identifier|Authority|TeamIdentifier|CodeDirectory)" || { echo "NOT SIGNED: $item"; exit 1; }
           done
           echo "=== embedded profiles ==="; find Payload -name embedded.mobileprovision
+      - name: Inspect the signed release IPA (updater path)
+        run: |
+          set -e
+          F="$RUNNER_TEMP/fixtures"
+          if [ ! -f "$F/self-update.ipa" ]; then echo "no self-update.ipa (release IPA missing)"; exit 0; fi
+          mkdir -p "$F/self-out" && cd "$F/self-out" && unzip -q -o ../self-update.ipa
+          APP=Payload/CertSigner.app
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = "com.other.app"
+          for item in "$APP" "$APP/Frameworks/OpenSSL.framework"; do
+            echo "--- $item"
+            codesign -dvv "$item" 2>&1 | grep -E "^(Identifier|Authority|TeamIdentifier)" || { echo "NOT SIGNED: $item"; exit 1; }
+          done
       - name: Signing logs (always)
         if: always()
         run: |

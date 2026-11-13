@@ -224,6 +224,21 @@ struct UpdatePlan {
     var canUpdate: Bool { certificate != nil && blockingIssue == nil }
 }
 
+/// Log lines from the signing thread, kept in order (for explaining a failure).
+final class LineCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lines: [(text: String, isError: Bool)] = []
+
+    func add(_ text: String, isError: Bool) {
+        lock.lock(); lines.append((text, isError)); lock.unlock()
+    }
+
+    var items: [(text: String, isError: Bool)] {
+        lock.lock(); defer { lock.unlock() }
+        return lines
+    }
+}
+
 // MARK: - Service
 
 /// Checks GitHub for a newer CertSigner, then downloads it, verifies it, signs it with the
@@ -430,7 +445,7 @@ final class UpdateService: ObservableObject {
     // MARK: Plan
 
     /// Picks the certificate and runs the pre-update checks.
-    func plan(certificates: CertificateStore, udid: String) async -> UpdatePlan {
+    func plan(certificates: CertificateStore, udid: String, preferredID: UUID? = nil) async -> UpdatePlan {
         let running = RunningSignature.current()
         var candidates: [UpdateCertificateMatcher.Candidate] = []
         for certificate in certificates.certificates {
@@ -442,7 +457,9 @@ final class UpdateService: ObservableObject {
                                     isActive: certificate.id == certificates.activeID,
                                     expires: certificate.expirationDate))
         }
-        let picked = UpdateCertificateMatcher.pick(candidates, runningTeam: running.teamID)
+        // The user's pick on the sheet wins (its checks still apply); otherwise the best match.
+        let chosen = preferredID.flatMap { id in certificates.certificates.first { $0.id == id } }
+        let picked = chosen ?? UpdateCertificateMatcher.pick(candidates, runningTeam: running.teamID)
             .flatMap { pick in certificates.certificates.first { $0.id == pick.id } }
 
         guard let picked else {
@@ -500,7 +517,7 @@ final class UpdateService: ObservableObject {
                                             : "The profile's App ID is \(pattern), which doesn't allow \(running.bundleID). Use the profile CertSigner was installed with.",
                             passed: allowed))
         checks.append(.init(id: "password", title: "Password saved",
-                            detail: certificate.hasPassword ? "Stored in the Keychain." : "Enter the .p12 password in the certificate's details.",
+                            detail: certificate.hasPassword ? "Stored in the Keychain." : "No .p12 password is saved in the Keychain for this certificate. Open it in Settings → Certificates and enter the password.",
                             passed: certificate.hasPassword))
         if !udid.isEmpty, let profile {
             let listed = profile.containsDevice(udid)
@@ -589,40 +606,46 @@ final class UpdateService: ObservableObject {
             }
             try Task.checkCancellation()
 
-            // 3. Sign with the same pipeline as every app, keeping this copy's bundle ID and name.
+            // 3. Sign with the same function, inputs and settings as a normal signing job
+            //    (SigningInput.make + SigningWorker.run), keeping this copy's bundle ID.
+            //    Every attempt starts clean: no signed copy or partial file from an earlier try.
             stage = .sign
-            if FileManager.default.fileExists(atPath: signed.path) {
-                note("Using the signed copy from the last attempt")
-            } else {
-                runState = .running(.sign, 0)
-                let options = Self.signingOptions(for: plan.running)
-                let input = SigningInput(
-                    ipaURL: downloaded,
-                    p12URL: certificates.p12URL(for: certificate.id),
-                    profileURL: certificates.profileURL(for: certificate.id),
-                    password: certificates.password(for: certificate.id) ?? "",
-                    options: options,
-                    appIDPattern: certificate.profile?.bundleIDPattern ?? "*",
-                    outputURL: signed.appendingPathExtension("partial"),
-                    certificateName: certificate.record.signingCertificate?.commonName.map { "\($0) (\(certificate.nickname))" } ?? certificate.nickname,
-                    certificateExpiry: certificate.record.signingCertificate?.notAfter ?? certificate.expirationDate
-                )
-                let output: SigningOutput
-                do {
-                    output = try await Task.detached(priority: .userInitiated) {
-                        try SigningWorker.run(input) { event in
-                            Task { @MainActor in UpdateService.shared.handle(event) }
-                        }
-                    }.value
-                } catch {
-                    throw UpdateError.signing(error.localizedDescription)
-                }
-                guard output.bundleID == plan.running.bundleID else {
-                    throw UpdateError.signing("bundle ID came out as \(output.bundleID)")
-                }
-                try FileManager.default.moveItem(at: signed.appendingPathExtension("partial"), to: signed)
-                note("Signed as \(output.bundleID)")
+            runState = .running(.sign, 0)
+            let partial = signed.appendingPathExtension("partial")
+            try? FileManager.default.removeItem(at: signed)
+            try? FileManager.default.removeItem(at: partial)
+            Self.removeStaleSigningFolders()
+
+            let password = certificates.password(for: certificate.id)
+            let ipaMeta = try? IPAInspector.inspect(downloaded)
+            let options = Self.signingOptions(for: plan.running, ipaBundleID: ipaMeta?.bundleID ?? UpdateRules.bundleID)
+            logSigningSetup(update: update, plan: plan, certificate: certificate, certificates: certificates,
+                            ipaMeta: ipaMeta, options: options, password: password, ipa: downloaded, output: partial)
+            guard let password, !password.isEmpty else {
+                throw UpdateError.notReady("No .p12 password is saved in the Keychain for \(certificate.nickname). Open it in Settings → Certificates, enter the password, then try again.")
             }
+            let input = SigningInput.make(certificate: certificate, p12URL: certificates.p12URL(for: certificate.id),
+                                          profileURL: certificates.profileURL(for: certificate.id), password: password,
+                                          ipa: downloaded, options: options, output: partial)
+            let zsignLines = LineCollector()
+            let output: SigningOutput
+            do {
+                output = try await Task.detached(priority: .userInitiated) {
+                    try SigningWorker.run(input) { event in
+                        if case .log(let text, let isError) = event { zsignLines.add(text, isError: isError) }
+                        Task { @MainActor in UpdateService.shared.handle(event) }
+                    }
+                }.value
+            } catch {
+                try? FileManager.default.removeItem(at: partial)
+                let explained = Self.explainSigningFailure(error, lines: zsignLines.items)
+                throw UpdateError.signing("\(explained.cause) \(explained.fix)")
+            }
+            guard output.bundleID == plan.running.bundleID else {
+                throw UpdateError.signing("The bundle ID came out as \(output.bundleID) instead of \(plan.running.bundleID), so iOS would install a second app instead of updating this one.")
+            }
+            try FileManager.default.moveItem(at: partial, to: signed)
+            note("Signed as \(output.bundleID)")
             try Task.checkCancellation()
 
             // 4. Install through the shared install session (the user confirms the iOS prompt).
@@ -647,11 +670,105 @@ final class UpdateService: ObservableObject {
             runState = .failed(stage, message)
             Haptics.error()
         }
+        saveLog(build: update.build)
     }
 
-    /// The options the update is signed with (tests sign the release IPA with exactly these).
-    nonisolated static func signingOptions(for running: RunningSignature) -> SigningOptions {
-        SigningOptions(displayName: running.displayName, bundleID: running.bundleID, mode: .strict)
+    // MARK: Signing helpers
+
+    /// The options the update is signed with (tests sign the release IPA with exactly these):
+    /// Compatibility (the IPA's own bundle ID, nothing rewritten) when this copy uses the IPA's
+    /// bundle ID; otherwise Strict with this copy's bundle ID, so iOS replaces the installed app.
+    nonisolated static func signingOptions(for running: RunningSignature, ipaBundleID: String = UpdateRules.bundleID) -> SigningOptions {
+        if running.bundleID == ipaBundleID {
+            return SigningOptions(mode: .compatibility)
+        }
+        return SigningOptions(bundleID: running.bundleID, mode: .strict)
+    }
+
+    /// Signing folders from attempts that never finished (the app was closed mid-signing).
+    private static func removeStaleSigningFolders() {
+        let fm = FileManager.default
+        let temp = fm.temporaryDirectory
+        let cutoff = Date().addingTimeInterval(-15 * 60)
+        for url in (try? fm.contentsOfDirectory(at: temp, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        where url.lastPathComponent.hasPrefix("Signing-") {
+            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            if modified < cutoff { try? fm.removeItem(at: url) }
+        }
+    }
+
+    /// Everything that decides the signing result, written to the update log before zsign runs.
+    private func logSigningSetup(update: AvailableUpdate, plan: UpdatePlan, certificate: Certificate,
+                                 certificates: CertificateStore, ipaMeta: IPAMetadata?, options: SigningOptions,
+                                 password: String?, ipa: URL, output: URL) {
+        func day(_ date: Date?) -> String { date.map { $0.formatted(date: .abbreviated, time: .omitted) } ?? "unknown" }
+        let summary = certificate.record.signingCertificate
+        let profile = certificate.profile
+        note("— Update signing setup —")
+        note("Certificate: \(certificate.nickname) [\(certificate.id.uuidString.prefix(8))], \(summary?.commonName ?? "name unknown"), expires \(day(summary?.notAfter))")
+        if let profile {
+            note("Profile: \(profile.name) (\(profile.uuid)), team \(profile.teamID), App ID \(profile.applicationIdentifier), expires \(day(profile.expirationDate)), get-task-allow \(profile.getTaskAllow ? "yes" : "no")")
+        } else {
+            note("Profile: couldn't be read", error: true)
+        }
+        note(".p12 listed in the profile: \(certificate.record.matchesProfile.map { $0 ? "yes" : "no" } ?? "unknown")")
+        note("New IPA: \(ipaMeta?.bundleID ?? "unreadable") build \(ipaMeta?.build ?? "?") (release build \(update.build))")
+        note("Installed app: \(plan.running.bundleID), team \(plan.running.teamID ?? "unknown")")
+        note("Signing mode: \(options.effectiveMode.title); bundle ID \(options.trimmedBundleID.isEmpty ? "kept from the IPA" : "→ " + options.trimmedBundleID)")
+        if let password {
+            note(password.isEmpty ? "Password: found in the Keychain but empty" : "Password: found in the Keychain (\(password.count) characters)",
+                 error: password.isEmpty)
+        } else {
+            note("Password: not found in the Keychain", error: true)
+        }
+        note("Paths: IPA \(ipa.path)")
+        note("       .p12 \(certificates.p12URL(for: certificate.id).path) (\(FileManager.default.fileExists(atPath: certificates.p12URL(for: certificate.id).path) ? "present" : "missing"))")
+        note("       profile \(certificates.profileURL(for: certificate.id).path)")
+        note("       output \(output.path); work folder \(FileManager.default.temporaryDirectory.path)Signing-…")
+    }
+
+    /// Plain-words cause and fix for a failed signing, from the error and zsign's own lines.
+    nonisolated static func explainSigningFailure(_ error: Error, lines: [(text: String, isError: Bool)]) -> (cause: String, fix: String) {
+        let message = error.localizedDescription
+        let zsign = lines.map(\.text).filter { $0.contains(">>>") || $0.lowercased().contains("error") || $0.lowercased().contains("failed") }
+        let first = zsign.first.map { $0.replacingOccurrences(of: ">>>", with: "").trimmingCharacters(in: .whitespaces) }
+        let detail = zsign.joined(separator: " ").lowercased()
+        if message.contains("Couldn't load the certificate") || detail.contains("p12") && detail.contains("password") {
+            return ("zsign couldn't open the .p12 with the saved password.",
+                    "Re-enter the password in the certificate's details (Settings → Certificates), then try again.")
+        }
+        if detail.contains("free space of loadcommands") || detail.contains("enough codesignature space") || detail.contains("codesignature segment") {
+            return ("The new build's program has no room for a signature (\(first ?? "zsign")).",
+                    "This is a CertSigner build problem, not your certificate. Share the log with the developer; the web installer or another signer can update meanwhile.")
+        }
+        if detail.contains("bundleexecute") || detail.contains("non-mach-o") {
+            return ("zsign couldn't open one of the app's program files for signing (\(first ?? "zsign")).",
+                    "Try again. If it keeps failing, share the log: the file may be read-only or damaged in this build.")
+        }
+        if detail.contains("app folder") || detail.contains("info.plist") {
+            return ("The downloaded app couldn't be read (\(first ?? "zsign")).", "Try again; the update is downloaded again from the start.")
+        }
+        if case SigningError.unzip = error {
+            return ("The downloaded IPA couldn't be unpacked.", "Try again; the update is downloaded again from the start.")
+        }
+        if case SigningError.package = error {
+            return ("The signed app couldn't be saved (\(message)).", "Free some storage, then try again.")
+        }
+        if let first {
+            return ("zsign stopped: \(first).", "Share the log below if Try Again doesn't help.")
+        }
+        return ("\(message).", "Share the log below if Try Again doesn't help.")
+    }
+
+    /// The last update's log, for Share Log.
+    @Published private(set) var logFileURL: URL?
+
+    private func saveLog(build: Int) {
+        let url = SigningLogStore.folder.appendingPathComponent("update-build-\(build).log")
+        var text = "CertSigner update log (build \(UpdateRules.installedBuild) → \(build))\n"
+        text += "Date: \(Date().formatted(date: .abbreviated, time: .standard))\n\n"
+        text += log.map { ($0.isError ? "[error] " : "") + $0.text }.joined(separator: "\n") + "\n"
+        if (try? Data(text.utf8).write(to: url, options: .atomic)) != nil { logFileURL = url }
     }
 
     private func handle(_ event: SigningEvent) {

@@ -17,6 +17,10 @@ struct UpdateSheet: View {
     @State private var plan: UpdatePlan?
     @State private var showAllNotes = false
     @State private var showLog = false
+    /// A certificate picked on this sheet (nil = the best match for the installed copy).
+    @State private var preferredCertificateID: UUID?
+    @State private var showCertificatePicker = false
+    @AppStorage(SettingsKeys.autoCloseInstall) private var autoClose = true
 
     var body: some View {
         NavigationStack {
@@ -58,6 +62,21 @@ struct UpdateSheet: View {
         .task {
             if updates.checkState == .idle { await updates.check() }
             plan = await updates.plan(certificates: certificates, udid: udid)
+        }
+        .sheet(isPresented: $showCertificatePicker) {
+            CertificatePickerSheet(title: "Sign the Update With", selectedID: plan?.certificate?.id) { id in
+                preferredCertificateID = id
+                Task { plan = await updates.plan(certificates: certificates, udid: udid, preferredID: id) }
+            }
+            .sheetChrome()
+        }
+        // iOS has the update: close the sheet like the normal install sheet does (failures stay open).
+        .onChange(of: install.phase) { phase in
+            guard autoClose, phase.isSuccess, updates.runState == .installing else { return }
+            Task {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                if install.phase.isSuccess { dismiss() }
+            }
         }
     }
 
@@ -116,6 +135,16 @@ struct UpdateSheet: View {
                     }
                 }
                 InfoRow(label: "Bundle ID kept", value: plan.running.bundleID, monospaced: true)
+                if certificates.certificates.count > 1 {
+                    Button {
+                        Haptics.selection()
+                        showCertificatePicker = true
+                    } label: {
+                        Label("Use Another Certificate", systemImage: "arrow.left.arrow.right")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .accessibilityHint("The same team as the installed copy is needed for an update")
+                }
             }
             CardSection("Checks", systemImage: "checklist") {
                 ForEach(plan.checks) { check in
@@ -152,9 +181,10 @@ struct UpdateSheet: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            if case .failed(_, let message) = updates.runState {
-                ErrorState(title: "Update didn't finish", message: message,
-                           details: updates.log.suffix(12).map(\.text).joined(separator: "\n"), compact: true)
+            if case .failed(let stage, let message) = updates.runState {
+                ErrorState(title: stage == .sign ? "Signing the update failed" : "Update didn't finish", message: message,
+                           details: updates.log.suffix(30).map { ($0.isError ? "⚠︎ " : "") + $0.text }.joined(separator: "\n"),
+                           compact: true)
             }
             if case .failed(let message) = install.phase, updates.runState == .installing {
                 ErrorState(title: "Install didn't finish", message: message, compact: true)
@@ -262,20 +292,32 @@ struct UpdateSheet: View {
                     }
                     if case .failed = install.phase {
                         PrimaryButton(title: "Try Again", systemImage: "arrow.clockwise") { updates.resetRun(); start(update) }
+                        shareLog
                     }
                 case .failed:
                     PrimaryButton(title: "Try Again", systemImage: "arrow.clockwise") {
                         updates.resetRun()
                         start(update)
                     }
+                    shareLog
                 }
             }
         }
     }
 
+    @ViewBuilder
+    private var shareLog: some View {
+        if let url = updates.logFileURL {
+            ShareLink(item: url) {
+                Label("Share Log", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.app(.secondary))
+        }
+    }
+
     private func start(_ update: AvailableUpdate) {
         Task {
-            let fresh = await updates.plan(certificates: certificates, udid: udid)
+            let fresh = await updates.plan(certificates: certificates, udid: udid, preferredID: preferredCertificateID)
             plan = fresh
             guard fresh.canUpdate else {
                 Haptics.warning()

@@ -146,6 +146,37 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertEqual(UpdateCertificateMatcher.pick([any], runningTeam: nil)?.id, any.id)
     }
 
+    // MARK: Signing the update
+
+    func testReadOnlyFilesBecomeWritableForSigning() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("writable-\(UUID().uuidString)", isDirectory: true)
+        let framework = root.appendingPathComponent("Payload/App.app/Frameworks/Lib.framework", isDirectory: true)
+        try fm.createDirectory(at: framework, withIntermediateDirectories: true)
+        let binary = framework.appendingPathComponent("Lib")
+        try Data([0xcf, 0xfa, 0xed, 0xfe]).write(to: binary)
+        try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: binary.path)
+        defer { try? fm.removeItem(at: root) }
+
+        XCTAssertEqual(AppBundlePatcher.makeWritable(root), 1)
+        let mode = (try fm.attributesOfItem(atPath: binary.path)[.posixPermissions] as? NSNumber)?.int16Value ?? 0
+        XCTAssertEqual(mode, 0o755, "owner write added, executable bits kept")
+        XCTAssertEqual(AppBundlePatcher.makeWritable(root), 0, "nothing left to change")
+    }
+
+    func testSigningFailuresAreExplainedInPlainWords() {
+        let zsign = SigningError.sign("zsign couldn't sign the app. See the log for details.")
+        let parse = UpdateService.explainSigningFailure(zsign, lines: [
+            (">>> Warning: Skipping non-Mach-O file: \tFrameworks/OpenSSL.framework/OpenSSL", false),
+            (">>> Can't parse BundleExecute file! /tmp/x/OpenSSL", true)
+        ])
+        XCTAssertTrue(parse.cause.contains("program files"))
+        XCTAssertFalse(parse.cause.contains("See the log"))
+        let password = UpdateService.explainSigningFailure(
+            SigningError.sign("Couldn't load the certificate. Check the .p12 password and that it matches the profile."), lines: [])
+        XCTAssertTrue(password.fix.contains("password"))
+    }
+
     // MARK: Skipping
 
     @MainActor

@@ -37,6 +37,25 @@ struct SigningInput: Sendable {
     var certificateExpiry: Date? = nil
 }
 
+extension SigningInput {
+    /// The one way to build a signing input from a stored certificate: normal jobs and the in-app
+    /// updater both use it, so their certificate, profile, App ID and log details can't diverge.
+    static func make(certificate: Certificate, p12URL: URL, profileURL: URL, password: String,
+                     ipa: URL, options: SigningOptions, output: URL) -> SigningInput {
+        SigningInput(
+            ipaURL: ipa,
+            p12URL: p12URL,
+            profileURL: profileURL,
+            password: password,
+            options: options,
+            appIDPattern: certificate.profile?.bundleIDPattern ?? "*",
+            outputURL: output,
+            certificateName: certificate.record.signingCertificate?.commonName.map { "\($0) (\(certificate.nickname))" } ?? certificate.nickname,
+            certificateExpiry: certificate.record.signingCertificate?.notAfter ?? certificate.expirationDate
+        )
+    }
+}
+
 /// Persisted signing logs: Documents/Logs/Signing/<signed app id>.log (failures: failed-<date>.log).
 enum SigningLogStore {
     static var folder: URL {
@@ -109,6 +128,11 @@ enum SigningWorker {
         }
         let appURL = try AppBundlePatcher.findApp(in: work)
         log("Found Payload/\(appURL.lastPathComponent)")
+        // zsign writes each signature into the file itself, so it must be able to open every file
+        // for writing. IPAs can carry read-only binaries (CertSigner's own OpenSSL.framework is
+        // 0555); zsign then skips them as "non-Mach-O" and fails the whole app.
+        let unlocked = AppBundlePatcher.makeWritable(work)
+        if unlocked > 0 { log("Made \(unlocked) read-only item\(unlocked == 1 ? "" : "s") writable for signing") }
         throttle.report(0.30)
 
         // 2. Patching (30 – 40%)
@@ -257,17 +281,8 @@ final class SigningJob: ObservableObject {
         let (signedID, folder) = store.reserve()
         let safeName = app.name.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>")).joined()
         let fileName = "\(safeName.isEmpty ? "App" : safeName)-signed.ipa"
-        let input = SigningInput(
-            ipaURL: ipaURL,
-            p12URL: p12URL,
-            profileURL: profileURL,
-            password: password,
-            options: options,
-            appIDPattern: certificate.profile?.bundleIDPattern ?? "*",
-            outputURL: folder.appendingPathComponent(fileName),
-            certificateName: certificate.record.signingCertificate?.commonName.map { "\($0) (\(certificate.nickname))" } ?? certificate.nickname,
-            certificateExpiry: certificate.record.signingCertificate?.notAfter ?? certificate.expirationDate
-        )
+        let input = SigningInput.make(certificate: certificate, p12URL: p12URL, profileURL: profileURL, password: password,
+                                      ipa: ipaURL, options: options, output: folder.appendingPathComponent(fileName))
 
         var continuation: AsyncStream<SigningEvent>.Continuation?
         let events = AsyncStream<SigningEvent> { continuation = $0 }

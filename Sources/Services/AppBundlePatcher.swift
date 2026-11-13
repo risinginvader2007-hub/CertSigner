@@ -28,6 +28,31 @@ enum AppBundlePatcher {
     static let extensionFolders = ["PlugIns", "Extensions"]
     static let watchFolders = ["Watch", "WatchKit", "com.apple.WatchPlaceholder"]
 
+    /// Gives the owner write permission on every file and folder under `root` that lacks it
+    /// (keeping the other permission bits, e.g. executable). Symbolic links are left alone.
+    /// Returns how many items were changed.
+    @discardableResult
+    static func makeWritable(_ root: URL) -> Int {
+        let fm = FileManager.default
+        var changed = 0
+        func unlock(_ path: String) {
+            guard let attributes = try? fm.attributesOfItem(atPath: path),
+                  (attributes[.type] as? FileAttributeType) != .typeSymbolicLink,
+                  let mode = (attributes[.posixPermissions] as? NSNumber)?.int16Value,
+                  mode & 0o200 == 0 else { return }
+            if (try? fm.setAttributes([.posixPermissions: NSNumber(value: mode | 0o200)], ofItemAtPath: path)) != nil {
+                changed += 1
+            }
+        }
+        unlock(root.path)
+        if let items = fm.enumerator(atPath: root.path) {
+            for case let relative as String in items {
+                unlock(root.appendingPathComponent(relative).path)
+            }
+        }
+        return changed
+    }
+
     /// Finds Payload/<X>.app inside an extracted IPA folder.
     static func findApp(in extracted: URL) throws -> URL {
         let payload = extracted.appendingPathComponent("Payload", isDirectory: true)

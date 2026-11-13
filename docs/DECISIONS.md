@@ -92,6 +92,13 @@ Originally from the Hermes handover (§5, §6), 2026-11-07 → 11-10. Add new en
   `msync` alone didn't help. Keep patch 4 in `Vendor/zsign/common/fs.cpp` (buffered map +
   write-back, `__EMSCRIPTEN__` only; no effect on iOS).
 
+- **Read-only files in an IPA break on-device signing** (2026-11-13). zsign opens every binary
+  for writing to insert the signature; a file without write permission (CertSigner's own
+  `OpenSSL.framework/OpenSSL` is stored 0555) is skipped as "non-Mach-O" and the app fails with
+  "Can't parse BundleExecute file". `SigningWorker` now gives the owner write permission on every
+  unpacked file before zsign runs (`AppBundlePatcher.makeWritable`). The WebAssembly signer never
+  hit this (in-memory files have no permissions), which is why the web installer worked.
+
 ### Tests
 - **Signing fixtures need a CA chain.** A self-signed leaf fails in zsign; the leaf is issued by a
   test CA carried in the p12 (like Apple's WWDR). App fixture p12 password: `test`. Web fixtures

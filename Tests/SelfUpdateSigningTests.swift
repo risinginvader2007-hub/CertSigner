@@ -49,6 +49,26 @@ final class SelfUpdateSigningTests: XCTestCase {
         XCTAssertEqual(output.bundleID, "com.certsigner.app")
     }
 
+    /// The release IPA ships OpenSSL.framework/OpenSSL read-only (0555); signing must still sign it.
+    func testReadOnlyFrameworkBinaryIsSigned() throws {
+        var options = SigningOptions()
+        options.mode = .compatibility
+        let (_, lines) = try sign(options, output: "self-readonly.ipa")
+        XCTAssertTrue(lines.contains { $0.hasPrefix("Made ") && $0.contains("writable") })
+        XCTAssertFalse(lines.contains { $0.contains("non-Mach-O") }, "zsign must not skip a program file")
+        XCTAssertTrue(lines.contains { $0.contains("✓ framework") && $0.contains("OpenSSL.framework") })
+    }
+
+    /// A copy installed with the IPA's own bundle ID: Compatibility, nothing rewritten.
+    func testUpdateKeepsTheIPABundleIDInCompatibilityMode() throws {
+        let running = RunningSignature(bundleID: "com.certsigner.app", displayName: "CertSigner", teamID: "ABCDE12345",
+                                       teamName: nil, certificates: [])
+        let options = UpdateService.signingOptions(for: running)
+        XCTAssertEqual(options.effectiveMode, .compatibility)
+        let (output, _) = try sign(options, output: "self-update-compat.ipa")
+        XCTAssertEqual(output.bundleID, "com.certsigner.app")
+    }
+
     /// The updater's exact options, for a copy installed under the profile's explicit App ID.
     func testUpdatePathSignsTheReleaseIPA() throws {
         let running = RunningSignature(bundleID: "com.other.app", displayName: "CertSigner", teamID: "ABCDE12345",
