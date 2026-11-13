@@ -22,6 +22,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     /// The animated intro plays once, on first launch.
     @AppStorage("ui.introSeen") private var introSeen = false
+    @ObservedObject private var updates = UpdateService.shared
 
     var body: some View {
         shell
@@ -58,11 +59,18 @@ struct RootView: View {
                 InstallSheet(app: app)
                     .sheetChrome()
             }
+            .sheet(isPresented: $updates.sheetShown) {
+                UpdateSheet()
+                    .sheetChrome()
+            }
             .onOpenURL { url in handleIncoming(url) }
             .task {
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                // "Updated to build N" after an in-app update, then the check for a newer one (when due).
+                let updated = updates.launch(toasts: toasts)
                 // Once per signature: which certificate this copy was signed with (e.g. after the web installer).
                 guard let message = LaunchSignature.confirmationIfNew(LaunchSignature.current()) else { return }
-                try? await Task.sleep(nanoseconds: 900_000_000)
+                if updated { try? await Task.sleep(nanoseconds: 3_000_000_000) }
                 toasts.show(message, kind: .success)
                 AppLog.info("launch: \(message)")
             }
@@ -144,6 +152,7 @@ private func tabScreen(_ tab: AppTab) -> some View {
 private struct NativeTabShell: View {
     @EnvironmentObject private var router: TabRouter
     @EnvironmentObject private var signedApps: SignedAppsStore
+    @ObservedObject private var updates = UpdateService.shared
 
     var body: some View {
         TabView(selection: $router.tab) {
@@ -160,6 +169,7 @@ private struct NativeTabShell: View {
             Tab(AppTab.settings.title, systemImage: AppTab.settings.systemImage, value: AppTab.settings) {
                 tabScreen(.settings).environment(\.auroraActive, router.tab == .settings)
             }
+            .badge(updates.highlighted == nil ? 0 : 1)
             Tab(value: AppTab.search, role: .search) {
                 tabScreen(.search)
             }
@@ -175,6 +185,7 @@ private struct NativeTabShell: View {
 private struct LegacyTabShell: View {
     @EnvironmentObject private var router: TabRouter
     @EnvironmentObject private var signedApps: SignedAppsStore
+    @ObservedObject private var updates = UpdateService.shared
     @State private var keyboardVisible = false
 
     var body: some View {
@@ -191,7 +202,8 @@ private struct LegacyTabShell: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !keyboardVisible {
-                FloatingTabBar(selection: $router.tab, badges: [.library: signedApps.attentionCount])
+                FloatingTabBar(selection: $router.tab, badges: [.library: signedApps.attentionCount,
+                                                                 .settings: updates.highlighted == nil ? 0 : 1])
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }

@@ -99,7 +99,9 @@ tested on a device is tracked in [`STATUS.md`](STATUS.md).
 - [x] Appearance: Theme sliding control (System / Light / Dark, snapshot cross-fade), Accent picker with Solid / Blended switch (16 blends), custom blends (two colour pickers, long-press delete), background animation toggle, Glow intensity (Low / Normal / High sliding control, stored separately for light and dark), App icon picker (Ocean / Sunset / Mint / Midnight, no system alert where supported)
 - [x] Storage dashboard: ring chart, device free space, five categories with detail screens (sort, swipe delete, Delete All), Clear Cache, Remove Unused IPAs, Clear Log with "Freed …" toasts, tips
 - [x] Diagnostics: Export Log File (ShareLink, preparing state), Clear Log
-- [x] About: version, Source on GitHub link
+- [x] About: version, Updates row (status → update sheet), Check for updates automatically, Source on GitHub link
+- [x] Update sheet: build, size, date, What's new, Signs with (certificate, team, expiry, bundle ID kept), checks, Update / Skip This Build; Download → Verify → Sign → Install progress, Reopen Prompt, Try Again, Cancel
+- [x] Home card "CertSigner build N is available" and a Settings tab badge (hidden for a skipped build); "Updated to build N" toast after the update
 - [x] Pull to refresh
 
 ## Web installer (`web/`, `worker/`)
@@ -141,5 +143,6 @@ Automated check after stage 6: every Button / Label / Toggle / Picker / sheet / 
 16. Storage dashboard: categories, detail screens, Clear Cache / Remove Unused IPAs show "Freed …".
 17. Scrolling and accent changes feel smooth at 120 Hz.
 18. Light mode: background glows clearly visible (default accent and a blend); text on and around them readable; dark mode looks exactly as before.
+20. In-app update (needs an installed build that has the updater and a newer release): Home card / Settings → Updates → sheet shows notes, certificate, all checks green → Update → download, verify, sign → iOS prompt → Install → CertSigner closes → open it → "Updated to build N"; certificates, signed apps and settings still there. Also: Skip This Build hides the card; a certificate from another team is refused with a clear message.
 19. Switch Light ↔ Dark in Settings and from Control Center: the glows fade over with no flash. Glow intensity Low / Normal / High changes the glows, and each appearance remembers its own choice.
 

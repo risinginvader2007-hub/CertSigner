@@ -11,6 +11,12 @@ https://github.com/risinginvader2007-hub/CertSigner/releases/latest/download/Cer
 
 Open it in Safari on your iPhone, then share the file to FlareStore (or any signer) to install CertSigner itself.
 
+**Updates:** once installed, CertSigner checks this repository's latest release (at most every 12 hours,
+or Settings → About → Updates). Tap **Update**: it downloads the new build, checks it against the
+release's `update.json` (size, SHA-256, bundle ID, build), signs it with your own certificate from
+the same team (keeping your bundle ID) and opens the iOS install prompt. CertSigner closes while
+iOS updates it; your certificates, apps and settings stay.
+
 ### From GitHub Actions
 1. Push to `main`, or open **Actions → Build IPA → Run workflow**.
 2. Wait for the green tick (about 2–4 minutes).

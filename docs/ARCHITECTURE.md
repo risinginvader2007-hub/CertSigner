@@ -136,6 +136,36 @@ on mismatch (the original behaviour).
 - **Automatic:** prefers Fully Local when a valid certificate exists; re-checks backloop.dev at
   most every 12 h.
 
+## 4b. In-app updates (`UpdateService`, `UpdateSheet`)
+
+- **Release side:** `build.yml` stamps `CFBundleVersion` = the Build IPA run number
+  (`CURRENT_PROJECT_VERSION`) and publishes `update.json` next to `CertSigner.ipa` on the `latest`
+  release (`.github/scripts/make-update-json.py`): `schema`, `build`, `version`, `commit`,
+  `bundleID`, `minimumOS`, `ipa {name, size, sha256}`, `published`, `notes` (commits since the
+  previous release, or `.github/release-notes.md` when present). The step fails if the IPA's build
+  number isn't the run number.
+- **Check:** `GET api.github.com/repos/risinginvader2007-hub/CertSigner/releases/latest` (repository
+  fixed in code, ETag + cached answer in `Caches/Updates`), at launch at most every 12 h (setting
+  "Check for updates automatically", default on) or from Settings → About → Updates. A release
+  without `update.json` (before the updater) offers nothing.
+- **Rules (`UpdateRules`):** published, not prerelease; schema 1; bundle ID `com.certsigner.app`;
+  asset `CertSigner.ipa` whose size matches `update.json`; download URL is this repository's
+  `github.com/…/releases/download/` over HTTPS; build newer than the installed one; minimum iOS met.
+- **Run:** download (`FileDownloader`) → verify (size, SHA-256, `IPAInspector`: bundle ID and build)
+  → sign with `SigningWorker` in **Strict** mode with the installed copy's own bundle ID and display
+  name → `InstallSession.start` (same methods, prompt and stall handling as any app). Files only in
+  `Caches/Updates/<build>/`; a verified download and a signed copy are reused on Try Again.
+- **Certificate:** `UpdateCertificateMatcher` picks a stored certificate from the **same team** as
+  the installed copy's `embedded.mobileprovision` (another team: iOS refuses the update and the
+  Keychain items belong to the old team), preferring the one that signed this copy. Checks: team,
+  certificate and profile expiry, .p12 in profile, App ID allows the bundle ID, password saved,
+  UDID (when entered).
+- **Finish:** iOS closes CertSigner while installing. `updates.pendingBuild` is saved before the
+  install; on the next launch, if the running build is ≥ it, "Updated to build N" is shown and
+  `Caches/Updates` is deleted.
+- **Limits:** the user confirms the iOS prompt (no silent install, no private APIs); builds before
+  the updater report build 1 and must be updated once by hand; no rollback (one rolling release).
+
 ## 5. Theme and background
 
 - `ThemeStore` has one `@Published state` (accent, gradient, onAccent, fade). `apply(Accent)`

@@ -17,6 +17,8 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.glowIntensityLight) private var lightGlow: GlowLevel = .normal
     @AppStorage(SettingsKeys.glowIntensityDark) private var darkGlow: GlowLevel = .normal
     @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var updates = UpdateService.shared
+    @AppStorage(UpdateService.Keys.autoCheck) private var autoCheckUpdates = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showCertificatePicker = false
     @AppStorage(SettingsKeys.deleteOriginal) private var deleteOriginal = true
@@ -27,6 +29,16 @@ struct SettingsView: View {
     @ObservedObject private var storageModel = StorageModel.shared
     @Environment(\.themeAccent) private var accentColor
     @State private var logURL: URL?
+
+    private var updateStatus: String {
+        switch updates.checkState {
+        case .idle: return "Check Now"
+        case .checking: return "Checking…"
+        case .upToDate: return "Up to date"
+        case .available(let update): return "Build \(update.build) available"
+        case .failed: return "Couldn't check"
+        }
+    }
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -433,6 +445,24 @@ struct SettingsView: View {
                 Spacer()
                 Text(appVersion).foregroundColor(.secondary)
             }
+            Button {
+                Haptics.impact(.light)
+                updates.sheetShown = true
+            } label: {
+                HStack {
+                    Label("Updates", systemImage: "arrow.down.app")
+                    Spacer()
+                    Text(updateStatus)
+                        .foregroundColor(updates.highlighted == nil ? .secondary : accentColor)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(.secondary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Toggle("Check for updates automatically", isOn: $autoCheckUpdates)
             if let url = URL(string: "https://github.com/risinginvader2007-hub/CertSigner") {
                 Link(destination: url) {
                     Label("Source on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")

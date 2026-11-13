@@ -20,6 +20,7 @@ struct HomeView: View {
     @State private var attentionGlow = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.themeGradient) private var gradient
+    @ObservedObject private var updates = UpdateService.shared
 
     private var attentionApps: Int { signedApps.attentionCount }
     private var certificateNeedsAttention: Bool { certificates.active?.needsAttention ?? false }
@@ -34,6 +35,10 @@ struct HomeView: View {
                         .staggeredEntrance(0, active: appeared)
                     if attentionApps > 0 || certificateNeedsAttention {
                         attentionBanner
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    if let update = updates.highlighted {
+                        updateCard(update)
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
                     if let transfer = library.transfer {
@@ -51,6 +56,7 @@ struct HomeView: View {
                 .padding(Theme.padding)
                 .animation(Theme.spring, value: library.transfer)
                 .animation(Theme.spring, value: attentionApps)
+                .animation(Theme.spring, value: updates.highlighted?.build)
             }
             .background(AmbientBackground())
             .refreshable { await refreshHome() }
@@ -107,6 +113,39 @@ struct HomeView: View {
                 tint: certificateNeedsAttention ? Theme.warning : Theme.success
             )
         }
+    }
+
+    // MARK: Update
+
+    private func updateCard(_ update: AvailableUpdate) -> some View {
+        Button {
+            Haptics.impact(.light)
+            updates.sheetShown = true
+        } label: {
+            HStack(spacing: Space.x4) {
+                IconTile(systemImage: "arrow.down.app.fill", color: accent, size: 44)
+                VStack(alignment: .leading, spacing: Space.hair) {
+                    Text("CertSigner build \(update.build) is available")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    Text(update.manifest.notes.first ?? "Update from here with your own certificate.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: Space.x2)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.bold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(Theme.padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cardBackground()
+            .contentShape(RoundedRectangle(cornerRadius: Theme.corner, style: .continuous))
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityHint("Shows what's new and updates CertSigner")
     }
 
     // MARK: Attention
