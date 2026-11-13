@@ -1,7 +1,9 @@
 name: Signing test
 on:
+  # Only ui-overhaul: main only ever receives fast-forwards of commits already tested there,
+  # so running it on main repeated the same test run. Start it by hand when needed.
   push:
-    branches: [main, ui-overhaul]
+    branches: [ui-overhaul]
   workflow_dispatch:
 
 jobs:
