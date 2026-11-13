@@ -595,8 +595,7 @@ final class UpdateService: ObservableObject {
                 note("Using the signed copy from the last attempt")
             } else {
                 runState = .running(.sign, 0)
-                let options = SigningOptions(displayName: plan.running.displayName, bundleID: plan.running.bundleID,
-                                             mode: .strict)
+                let options = Self.signingOptions(for: plan.running)
                 let input = SigningInput(
                     ipaURL: downloaded,
                     p12URL: certificates.p12URL(for: certificate.id),
@@ -648,6 +647,11 @@ final class UpdateService: ObservableObject {
             runState = .failed(stage, message)
             Haptics.error()
         }
+    }
+
+    /// The options the update is signed with (tests sign the release IPA with exactly these).
+    nonisolated static func signingOptions(for running: RunningSignature) -> SigningOptions {
+        SigningOptions(displayName: running.displayName, bundleID: running.bundleID, mode: .strict)
     }
 
     private func handle(_ event: SigningEvent) {

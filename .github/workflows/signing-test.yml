@@ -13,6 +13,10 @@ jobs:
         run: brew install xcodegen
       - name: Make fixtures (2 extensions + framework + dylib, explicit mismatching profile)
         run: bash .github/scripts/make-signing-fixtures.sh "$RUNNER_TEMP/fixtures"
+      - name: Release IPA (signed by the self-update tests like the in-app updater does)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download latest -R "${{ github.repository }}" -p CertSigner.ipa -O "$RUNNER_TEMP/fixtures/certsigner.ipa" || echo "no release IPA; those tests will skip"
       - name: Generate Xcode project
         run: xcodegen generate
       - name: Run signing pipeline tests in the simulator
@@ -51,3 +55,5 @@ jobs:
         run: |
           echo "=== Compatibility log ==="; cat "$RUNNER_TEMP/fixtures/compat.ipa.log" || true
           echo; echo "=== Strict log (expected to stop at the mismatch) ==="; cat "$RUNNER_TEMP/fixtures/strict.ipa.log" || true
+          echo; echo "=== Release IPA, normal job ==="; cat "$RUNNER_TEMP/fixtures/self-normal.ipa.log" || true
+          echo; echo "=== Release IPA, updater ==="; cat "$RUNNER_TEMP/fixtures/self-update.ipa.log" || true
