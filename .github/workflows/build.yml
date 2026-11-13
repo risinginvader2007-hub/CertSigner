@@ -18,35 +18,60 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the release notes list the commits since the previous release
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate Xcode project
         run: xcodegen generate
       - name: Build (unsigned)
+        # CFBundleVersion = this run's build number, so the app knows which release it is.
         run: |
           xcodebuild -project CertSigner.xcodeproj -scheme CertSigner \
             -configuration Release -sdk iphoneos \
             -derivedDataPath build \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
       - name: Package IPA
         run: |
           mkdir Payload
           cp -r build/Build/Products/Release-iphoneos/CertSigner.app Payload/
           zip -r CertSigner.ipa Payload
+      - name: "Release metadata (update.json for the in-app updater)"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Notes: .github/release-notes.md when present, else the commits since the last release.
+          if [ -f .github/release-notes.md ]; then
+            cp .github/release-notes.md notes.txt
+          else
+            prev=$(gh release view latest -R "${{ github.repository }}" --json targetCommitish -q .targetCommitish 2>/dev/null || true)
+            if [ -n "$prev" ] && [ "$prev" != "$GITHUB_SHA" ] && git cat-file -e "$prev^{commit}" 2>/dev/null; then
+              git log --no-merges --format='%s' "$prev..$GITHUB_SHA" > notes.txt
+            else
+              git log --no-merges --format='%s' -n 20 > notes.txt
+            fi
+          fi
+          python3 .github/scripts/make-update-json.py CertSigner.ipa "${{ github.run_number }}" "$GITHUB_SHA" notes.txt > update.json
+          cat update.json
+          { echo "Unsigned build ${{ github.run_number }} from commit $GITHUB_SHA. Update from inside CertSigner, or install with any signer."
+            echo; echo "Changes:"; sed 's/^/- /' notes.txt | grep -v '^- $' | head -40; } > release-body.md
       - uses: actions/upload-artifact@v4
         with:
           name: CertSigner-ipa
-          path: CertSigner.ipa
+          path: |
+            CertSigner.ipa
+            update.json
       - name: Publish to Releases
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest -R "${{ github.repository }}" --yes --cleanup-tag || true
-          gh release create latest CertSigner.ipa -R "${{ github.repository }}" \
+          gh release create latest CertSigner.ipa update.json -R "${{ github.repository }}" \
             --target "${{ github.sha }}" \
             --title "CertSigner (build ${{ github.run_number }})" \
-            --notes "Unsigned build from commit ${{ github.sha }}. Install with FlareStore or any signer." \
+            --notes-file release-body.md \
             --latest
 
   # "Get CertSigner" web installer: zsign compiled to WebAssembly, tested by signing the IPA
@@ -63,6 +88,9 @@ jobs:
         with:
           name: CertSigner-ipa
           path: web/site/app
+      - name: Keep only the IPA for the site
+        if: needs.build.result == 'success'
+        run: rm -f web/site/app/update.json
       - name: Unsigned IPA from the latest release (web-only runs)
         if: needs.build.result != 'success'
         env:
