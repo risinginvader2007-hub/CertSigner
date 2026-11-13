@@ -41,7 +41,7 @@ struct SourceAppDetailView: View {
                     }
                     .padding(Theme.padding)
                     // Animate only when a download starts / starts importing / ends — never on byte counts.
-                    .animation(Theme.spring, value: store.download(repoID: repo.id, app: app)?.importing)
+                    .animation(Theme.spring, value: store.anyDownload(repoID: repo.id, app: app)?.state.importing)
                 }
                 .background(AmbientBackground())
                 .navigationTitle(app.name)
@@ -80,11 +80,12 @@ struct SourceAppDetailView: View {
 
     @ViewBuilder
     private func actions(_ app: RepoApp, repo: Repository) -> some View {
-        if let download = store.download(repoID: repo.id, app: app) {
+        if let running = store.anyDownload(repoID: repo.id, app: app) {
+            let download = running.state
             Card {
                 VStack(alignment: .leading, spacing: Space.x3) {
                     HStack {
-                        Text(download.importing ? "Importing…" : "Downloading…")
+                        Text("\(download.importing ? "Importing" : "Downloading") \(running.version.version)…")
                             .font(.subheadline.weight(.semibold))
                         Spacer()
                         if !download.importing {
@@ -103,7 +104,7 @@ struct SourceAppDetailView: View {
                     }
                     if !download.importing {
                         Button(role: .destructive) {
-                            store.cancelDownload(repoID: repo.id, app: app)
+                            store.cancelDownload(repoID: repo.id, app: app, version: running.version)
                         } label: {
                             Label("Cancel", systemImage: "xmark")
                                 .font(.subheadline.weight(.semibold))
@@ -113,14 +114,18 @@ struct SourceAppDetailView: View {
             }
             .transition(.opacity)
         } else {
+            let reason = store.unavailableReason(app.latest)
             VStack(spacing: Space.x3) {
                 PrimaryButton(title: "Get", systemImage: "arrow.down.app.fill") {
                     get(app, version: nil, repo: repo, signAndInstall: true)
                 }
+                .disabled(reason != nil)
                 PrimaryButton(title: "Download & Review", systemImage: "slider.horizontal.3", style: .tinted) {
                     get(app, version: nil, repo: repo, signAndInstall: false)
                 }
-                Text("Get downloads the IPA, signs it with your active certificate and defaults, then shows the install prompt. Download & Review lets you change the options first.")
+                .disabled(reason != nil)
+                Text(reason.map { "Version \(app.latest.version): \($0) Pick another version below." }
+                     ?? "Get downloads the IPA, signs it with your active certificate and defaults, then shows the install prompt. Download & Review lets you change the options first.")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -172,49 +177,19 @@ struct SourceAppDetailView: View {
         }
     }
 
+    /// Every version, newest first: version, size, date, minimum iOS, "Latest" on the top one, its
+    /// own GET (that exact version) and a menu with Download & Review / Copy Download Link.
     private func versionsSection(_ app: RepoApp, repo: Repository) -> some View {
-        let visible = showAllVersions ? app.versions : Array(app.versions.prefix(3))
-        let busy = store.download(repoID: repo.id, app: app) != nil
-        return CardSection("Versions", systemImage: "clock.arrow.circlepath") {
-            ForEach(visible) { version in
-                HStack(spacing: Space.x3) {
-                    VStack(alignment: .leading, spacing: Space.hair) {
-                        HStack(spacing: Space.x2) {
-                            Text(version.version).font(.subheadline.weight(.semibold))
-                            if version.id == app.latest.id {
-                                StatusBadge(text: "Latest", kind: .success)
-                            }
-                        }
-                        Text(versionDetail(version)).font(.caption).foregroundColor(.secondary)
-                    }
-                    Spacer()
-                    Menu {
-                        Button {
-                            get(app, version: version, repo: repo, signAndInstall: true)
-                        } label: {
-                            Label("Sign & Install", systemImage: "arrow.down.app")
-                        }
-                        Button {
-                            get(app, version: version, repo: repo, signAndInstall: false)
-                        } label: {
-                            Label("Download & Review", systemImage: "slider.horizontal.3")
-                        }
-                        Button {
-                            UIPasteboard.general.string = version.downloadURL.absoluteString
-                        } label: {
-                            Label("Copy Download Link", systemImage: "doc.on.doc")
-                        }
-                    } label: {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.title2)
-                            .foregroundColor(busy ? .secondary : accent)
-                    }
-                    .disabled(busy)
-                    .accessibilityLabel("Get version \(version.version)")
+        let visible = showAllVersions ? app.versions : Array(app.versions.prefix(Self.collapsedVersions))
+        return CardSection(app.versions.count > 1 ? "Versions (\(app.versions.count))" : "Version",
+                           systemImage: "clock.arrow.circlepath") {
+            LazyVStack(alignment: .leading, spacing: Space.x2) {
+                ForEach(visible) { version in
+                    versionRow(version, app: app, repo: repo)
+                    if version.id != visible.last?.id { SoftDivider() }
                 }
-                if version.id != visible.last?.id { SoftDivider() }
             }
-            if app.versions.count > 3 {
+            if app.versions.count > Self.collapsedVersions {
                 Button(showAllVersions ? "Show fewer" : "Show all \(app.versions.count) versions") {
                     withAnimation(Theme.spring) { showAllVersions.toggle() }
                 }
@@ -222,6 +197,58 @@ struct SourceAppDetailView: View {
             }
         }
     }
+
+    private static let collapsedVersions = 5
+
+    private func versionRow(_ version: RepoVersion, app: RepoApp, repo: Repository) -> some View {
+        let reason = store.unavailableReason(version)
+        return HStack(spacing: Space.x3) {
+            VStack(alignment: .leading, spacing: Space.hair) {
+                HStack(spacing: Space.x2) {
+                    Text(version.version).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    if version.id == app.latest.id {
+                        StatusBadge(text: "Latest", kind: .success)
+                    }
+                }
+                Text(versionDetail(version)).font(.caption).foregroundColor(.secondary)
+                if let reason {
+                    Text(reason).font(.caption).foregroundColor(Theme.warning)
+                }
+            }
+            Spacer(minLength: Space.x2)
+            Menu {
+                Button {
+                    get(app, version: version, repo: repo, signAndInstall: true)
+                } label: {
+                    Label("Sign & Install", systemImage: "arrow.down.app")
+                }
+                .disabled(reason != nil)
+                Button {
+                    get(app, version: version, repo: repo, signAndInstall: false)
+                } label: {
+                    Label("Download & Review", systemImage: "slider.horizontal.3")
+                }
+                .disabled(reason != nil)
+                if let link = version.downloadURL {
+                    Button {
+                        UIPasteboard.general.string = link.absoluteString
+                    } label: {
+                        Label("Copy Download Link", systemImage: "doc.on.doc")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .foregroundColor(.secondary)
+                    .frame(width: 32, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("More for version \(version.version)")
+            GetButton(repo: repo, app: app, version: version)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
 
     private func infoSection(_ app: RepoApp, repo: Repository) -> some View {
         CardSection("Information", systemImage: "info.circle") {
@@ -253,6 +280,7 @@ struct SourceAppDetailView: View {
         if let build = version.buildVersion, build != version.version { parts.append("build \(build)") }
         if let date = version.date { parts.append(date.shortDate) }
         if let size = version.size { parts.append(size.byteString) }
+        if let minOS = version.minOSVersion { parts.append("iOS \(minOS)+") }
         return parts.isEmpty ? "—" : parts.joined(separator: " · ")
     }
 

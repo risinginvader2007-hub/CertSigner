@@ -54,6 +54,13 @@ final class RepositoryStore: ObservableObject {
             // Older builds stored a cancelled fetch as an error; that was never a real failure.
             var repo = repo
             if let error = repo.lastError, Self.looksLikeCancellation(error) { repo.lastError = nil }
+            // Older builds saved one app per version entry (shown as identical rows). Merge them now,
+            // so it is right even when the next refresh answers "not modified".
+            let merged = RepositoryParser.merge(repo.apps)
+            if merged.apps.count != repo.apps.count {
+                AppLog.info("Source \(repo.name): \(repo.apps.count) saved entries → \(merged.apps.count) apps")
+            }
+            repo.apps = merged.apps
             return repo
         }
         // Refresh on launch, independent of any screen.
@@ -87,13 +94,29 @@ final class RepositoryStore: ObservableObject {
         return url
     }
 
+    /// Same source address, ignoring case and a trailing slash.
+    nonisolated static func sameSource(_ a: URL, _ b: URL) -> Bool {
+        func key(_ url: URL) -> String {
+            var text = url.absoluteString.lowercased()
+            while text.hasSuffix("/") { text.removeLast() }
+            return text
+        }
+        return key(a) == key(b)
+    }
+
     @discardableResult
     func add(_ input: String) async throws -> Repository {
         let url = try Self.normalizedURL(input)
-        if let existing = repositories.first(where: { $0.url.absoluteString.lowercased() == url.absoluteString.lowercased() }) {
+        if let existing = repositories.first(where: { Self.sameSource($0.url, url) }) {
             throw RepositoryError.duplicate(existing.name)
         }
         let parsed = try await fetch(url)
+        // Added meanwhile (e.g. tapped twice while the first fetch was running): never twice.
+        if let existing = repositories.first(where: { Self.sameSource($0.url, url) }) {
+            throw RepositoryError.duplicate(existing.name)
+        }
+        AppLog.info("Source \(parsed.name): \(parsed.rawEntries) raw entries → \(parsed.apps.count) apps "
+                    + "(\(parsed.duplicatesRemoved) exact duplicate versions removed)")
         guard !parsed.apps.isEmpty else { throw RepositoryError.noApps }
         let repo = Repository(
             id: UUID(), url: url, name: parsed.name, subtitle: parsed.subtitle, iconURL: parsed.iconURL,
@@ -108,7 +131,7 @@ final class RepositoryStore: ObservableObject {
     func remove(_ id: UUID) {
         guard let index = repositories.firstIndex(where: { $0.id == id }) else { return }
         let repo = repositories[index]
-        for app in repo.apps { cancelDownload(repoID: id, app: app) }
+        for (key, task) in downloadTasks where key.hasPrefix(id.uuidString) { task.cancel() }
         withAnimation(DeleteMotion.collapse) { _ = repositories.remove(at: index) }
         save()
         AppLog.info("Removed source \(repo.name)")
@@ -183,6 +206,9 @@ final class RepositoryStore: ObservableObject {
             repositories[index].lastError = nil
             AppLog.info("Source \(repo.name) unchanged (304)")
         case .fresh(let parsed, let etag, let lastModified):
+            AppLog.info("Source \(parsed.name): \(parsed.rawEntries) raw entries → \(parsed.apps.count) apps, "
+                        + "\(parsed.apps.reduce(0) { $0 + $1.versions.count }) versions "
+                        + "(\(parsed.duplicatesRemoved) exact duplicate versions removed)")
             var updated = repositories[index]
             updated.name = parsed.name
             updated.subtitle = parsed.subtitle
@@ -288,28 +314,49 @@ final class RepositoryStore: ObservableObject {
 
     // MARK: Downloads
 
-    nonisolated static func downloadKey(repoID: UUID, app: RepoApp) -> String {
-        "\(repoID.uuidString)|\(app.id)"
+    /// One download per version (nil = the latest).
+    nonisolated static func downloadKey(repoID: UUID, app: RepoApp, version: RepoVersion? = nil) -> String {
+        "\(repoID.uuidString)|\(app.id)|\((version ?? app.latest).id)"
     }
 
-    func download(repoID: UUID, app: RepoApp) -> RepoDownload? {
-        downloads[Self.downloadKey(repoID: repoID, app: app)]
+    func download(repoID: UUID, app: RepoApp, version: RepoVersion? = nil) -> RepoDownload? {
+        downloads[Self.downloadKey(repoID: repoID, app: app, version: version)]
+    }
+
+    /// Any download of this app running (the detail page's progress card).
+    func anyDownload(repoID: UUID, app: RepoApp) -> (version: RepoVersion, state: RepoDownload)? {
+        for version in app.versions {
+            if let state = download(repoID: repoID, app: app, version: version) { return (version, state) }
+        }
+        return nil
+    }
+
+    /// Download links the server answered 404 / 410 for in this session.
+    @Published private(set) var unavailableLinks: Set<URL> = []
+
+    /// Why a version can't be downloaded, or nil when it can.
+    func unavailableReason(_ version: RepoVersion) -> String? {
+        guard let url = version.downloadURL else { return "The source lists no download for this version." }
+        if url.scheme?.lowercased() != "https" { return "Insecure (http) download link." }
+        if unavailableLinks.contains(url) { return "No longer available on the server." }
+        return nil
     }
 
     /// Downloads the IPA, imports it into the library and opens Review & Sign.
     /// `signAndInstall` = queue signing straight away with the defaults, then show the install prompt.
     func get(_ app: RepoApp, version: RepoVersion? = nil, from repo: Repository, signAndInstall: Bool,
              importer: ImportCoordinator, library: LibraryStore, toasts: ToastCenter) {
-        let key = Self.downloadKey(repoID: repo.id, app: app)
-        guard downloads[key] == nil else { return }
         let build = version ?? app.latest
-        guard build.downloadURL.scheme?.lowercased() == "https" else {
-            toasts.show(RepositoryError.insecureURL.localizedDescription, kind: .error)
+        let key = Self.downloadKey(repoID: repo.id, app: app, version: build)
+        guard downloads[key] == nil else { return }
+        if let reason = unavailableReason(build) {
+            toasts.show("\(app.name) \(build.version): \(reason)", kind: .warning)
             return
         }
+        guard let link = build.downloadURL else { return }
 
         downloads[key] = RepoDownload(received: 0, expected: build.size, startedAt: Date())
-        AppLog.info("Downloading \(app.name) \(build.version) from \(repo.name): \(build.downloadURL.absoluteString)")
+        AppLog.info("Downloading \(app.name) \(build.version) from \(repo.name): \(link.absoluteString)")
 
         downloadTasks[key] = Task { [weak self] in
             let downloader = FileDownloader(log: { AppLog.info($0) }) { received, expected in
@@ -321,7 +368,7 @@ final class RepositoryStore: ObservableObject {
                 }
             }
             do {
-                let file = try await downloader.start(build.downloadURL)
+                let file = try await downloader.start(link)
                 guard let self, !Task.isCancelled else {
                     try? FileManager.default.removeItem(at: file)
                     return
@@ -337,6 +384,11 @@ final class RepositoryStore: ObservableObject {
                 self.finishDownload(key)
                 if Task.isCancelled || (error as? URLError)?.code == .cancelled {
                     toasts.show("Download of \(app.name) cancelled.", kind: .info)
+                } else if case RepositoryError.http(let code)? = error as? RepositoryError, code == 404 || code == 410 {
+                    // The source still lists it, but the file is gone: disable this version's GET.
+                    self.unavailableLinks.insert(link)
+                    AppLog.error("Download of \(app.name) \(build.version) failed: HTTP \(code), marked unavailable")
+                    toasts.show("\(app.name) \(build.version) is no longer available on the server.", kind: .warning)
                 } else {
                     AppLog.error("Download of \(app.name) failed: \(error.localizedDescription)")
                     toasts.show("Couldn\'t download \(app.name). \(RepositoryStore.reason(for: error))", kind: .error)
@@ -345,8 +397,8 @@ final class RepositoryStore: ObservableObject {
         }
     }
 
-    func cancelDownload(repoID: UUID, app: RepoApp) {
-        let key = Self.downloadKey(repoID: repoID, app: app)
+    func cancelDownload(repoID: UUID, app: RepoApp, version: RepoVersion? = nil) {
+        let key = Self.downloadKey(repoID: repoID, app: app, version: version)
         downloadTasks[key]?.cancel()
     }
 

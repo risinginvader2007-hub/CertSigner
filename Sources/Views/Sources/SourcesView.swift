@@ -290,7 +290,8 @@ struct RepositoryView: View {
     let repoID: UUID
 
     @EnvironmentObject private var store: RepositoryStore
-    @State private var query = ""
+    /// Debounced, off-main search; one row per app (apps are merged per bundle ID when parsed).
+    @StateObject private var search = SourceSearch(sortByName: false)
 
     private var repo: Repository? { store.repository(repoID) }
 
@@ -299,23 +300,23 @@ struct RepositoryView: View {
             if let repo {
                 List {
                     Group {
-                    if query.isEmpty {
+                    if search.trimmedQuery.isEmpty {
                         Section {
                             header(repo)
                         }
                     }
-                    Section(query.isEmpty ? "Apps" : "Results") {
-                        let apps = filtered(repo.apps)
-                        if repo.apps.isEmpty && store.refreshing.contains(repo.id) {
+                    Section(search.trimmedQuery.isEmpty ? "Apps" : "Results") {
+                        let apps = search.results
+                        if repo.apps.isEmpty && store.refreshing.contains(repo.id) || (search.isLoading && !repo.apps.isEmpty) {
                             LoadingSkeleton(rows: 4)
                                 .padding(.vertical, Space.x1)
                         } else if repo.apps.isEmpty {
                             Text("This source doesn't list any apps yet.").foregroundColor(.secondary)
                         } else if apps.isEmpty {
-                            Text("No apps match “\(query)”.").foregroundColor(.secondary)
+                            Text("No apps match “\(search.trimmedQuery)”.").foregroundColor(.secondary)
                         }
-                        ForEach(apps) { app in
-                            SourceAppLink(repo: repo, app: app)
+                        ForEach(apps) { entry in
+                            SourceAppLink(repo: entry.repo, app: entry.app)
                         }
                     }
                     }
@@ -324,21 +325,16 @@ struct RepositoryView: View {
                 .scrollContentBackground(.hidden)
                 .background(AuroraBackground(intensity: 0.45))
                 .refreshable { await store.refresh(repoID) }
-                .searchable(text: $query, prompt: "Search \(repo.name)")
+                .searchable(text: $search.query, prompt: "Search \(repo.name)")
                 .navigationTitle(repo.name)
                 .navigationBarTitleDisplayMode(.inline)
             } else {
                 EmptyStateView(systemImage: "shippingbox", title: "Source removed", message: "This source is no longer in your list.")
             }
         }
-    }
-
-    private func filtered(_ apps: [RepoApp]) -> [RepoApp] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return apps }
-        return apps.filter {
-            $0.name.lowercased().contains(q) || $0.bundleID.lowercased().contains(q)
-                || ($0.developer?.lowercased().contains(q) ?? false)
+        .onReceive(store.$repositories) { repositories in
+            let current = repositories.first { $0.id == repoID }
+            search.update(current.map { repo in repo.apps.map { SourceEntry(repo: repo, app: $0) } } ?? [])
         }
     }
 
@@ -370,6 +366,10 @@ struct RepositoryView: View {
             }
             HStack(spacing: Space.x2) {
                 StatusBadge(text: "\(repo.apps.count) apps", systemImage: "square.grid.2x2", kind: .info)
+                let versions = repo.apps.reduce(0) { $0 + $1.versions.count }
+                if versions > repo.apps.count {
+                    StatusBadge(text: "\(versions) versions", systemImage: "clock.arrow.circlepath", kind: .neutral)
+                }
                 if let website = repo.website {
                     Link(destination: website) {
                         StatusBadge(text: "Website", systemImage: "safari", kind: .neutral)
@@ -385,24 +385,18 @@ struct RepositoryView: View {
 
 struct AllSourceAppsView: View {
     @EnvironmentObject private var store: RepositoryStore
-    @State private var query = ""
-
-    private var entries: [SourceEntry] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        let all = store.allApps.sorted { $0.app.name.localizedCaseInsensitiveCompare($1.app.name) == .orderedAscending }
-        guard !q.isEmpty else { return all }
-        return all.filter {
-            $0.app.name.lowercased().contains(q) || $0.app.bundleID.lowercased().contains(q)
-                || $0.repo.name.lowercased().contains(q)
-        }
-    }
+    /// Debounced, off-main search and sort; one row per app per source.
+    @StateObject private var search = SourceSearch(sortByName: true)
 
     var body: some View {
         List {
             Group {
-            let items = entries
-            if items.isEmpty {
-                Text(query.isEmpty ? "Your sources have no apps." : "No apps match “\(query)”.")
+            let items = search.results
+            if search.isLoading && !store.repositories.isEmpty {
+                LoadingSkeleton(rows: 4)
+                    .padding(.vertical, Space.x1)
+            } else if items.isEmpty {
+                Text(search.trimmedQuery.isEmpty ? "Your sources have no apps." : "No apps match “\(search.trimmedQuery)”.")
                     .foregroundColor(.secondary)
             }
             ForEach(items) { entry in
@@ -414,9 +408,12 @@ struct AllSourceAppsView: View {
         .scrollContentBackground(.hidden)
         .background(AuroraBackground(intensity: 0.45))
         .refreshable { await store.refreshAll() }
-        .searchable(text: $query, prompt: "Search all sources")
+        .searchable(text: $search.query, prompt: "Search all sources")
         .navigationTitle("All Apps")
         .navigationBarTitleDisplayMode(.inline)
+        .onReceive(store.$repositories) { repositories in
+            search.update(repositories.flatMap { repo in repo.apps.map { SourceEntry(repo: repo, app: $0) } })
+        }
     }
 }
 
@@ -448,7 +445,19 @@ struct SourceAppRow: View {
             VStack(alignment: .leading, spacing: Space.hair) {
                 Text(app.name).font(.body.weight(.semibold)).lineLimit(1)
                 Text(secondLine).font(.caption).foregroundColor(.secondary).lineLimit(1)
-                Text(thirdLine).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                HStack(spacing: Space.x1) {
+                    Text(thirdLine).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                    if app.versions.count > 1 {
+                        Text("\(app.versions.count) versions")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, Space.x1 + 2)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.primary.opacity(0.08)))
+                            .fixedSize()
+                            .accessibilityLabel("\(app.versions.count) versions available")
+                    }
+                }
             }
             Spacer(minLength: 8)
             GetButton(repo: repo, app: app)
@@ -461,19 +470,27 @@ struct SourceAppRow: View {
         return app.subtitle ?? app.developer ?? app.bundleID
     }
 
+    @EnvironmentObject private var store: RepositoryStore
+
     private var thirdLine: String {
         var parts = ["v\(app.latest.version)"]
         if let size = app.latest.size { parts.append(size.byteString) }
-        if let category = app.category { parts.append(category) }
+        if let reason = store.unavailableReason(app.latest) {
+            parts.append(reason)
+        } else if let category = app.category {
+            parts.append(category)
+        }
         return parts.joined(separator: " · ")
     }
 }
 
 /// App Store-style GET pill. Tap = download, sign with your defaults and show the install prompt.
-/// Shows a progress ring (tap to cancel) while downloading.
+/// Shows a progress ring (tap to cancel) while downloading. `version` nil = the latest; a version
+/// without a usable download link shows a disabled pill with the reason.
 struct GetButton: View {
     let repo: Repository
     let app: RepoApp
+    var version: RepoVersion? = nil
 
     @EnvironmentObject private var store: RepositoryStore
     @EnvironmentObject private var importer: ImportCoordinator
@@ -482,11 +499,13 @@ struct GetButton: View {
     @EnvironmentObject private var certificates: CertificateStore
     @Environment(\.themeAccent) private var accent
 
+    private var build: RepoVersion { version ?? app.latest }
+
     var body: some View {
         Group {
-            if let download = store.download(repoID: repo.id, app: app) {
+            if let download = store.download(repoID: repo.id, app: app, version: build) {
                 Button {
-                    if !download.importing { store.cancelDownload(repoID: repo.id, app: app) }
+                    if !download.importing { store.cancelDownload(repoID: repo.id, app: app, version: build) }
                 } label: {
                     ZStack {
                         if download.importing || download.progress == nil {
@@ -503,25 +522,29 @@ struct GetButton: View {
                 }
                 .accessibilityLabel(download.importing ? "Importing" : "Cancel download")
             } else {
+                let reason = store.unavailableReason(build)
+                let tint = reason == nil ? accent : Color.secondary
                 Button {
-                    SourceActions.get(app, from: repo, signAndInstall: true, store: store, importer: importer,
-                                      library: library, toasts: toasts, certificates: certificates)
+                    SourceActions.get(app, version: version, from: repo, signAndInstall: true, store: store,
+                                      importer: importer, library: library, toasts: toasts, certificates: certificates)
                 } label: {
                     Text("GET")
                         .font(.subheadline.weight(.heavy))
                         .tracking(0.5)
-                        .foregroundColor(accent)
+                        .foregroundColor(tint)
                         .frame(width: 72, height: 32)
-                        .background(Capsule().fill(accent.opacity(0.15)))
-                        .overlay(Capsule().strokeBorder(accent.opacity(0.3), lineWidth: 0.75))
+                        .background(Capsule().fill(tint.opacity(0.15)))
+                        .overlay(Capsule().strokeBorder(tint.opacity(0.3), lineWidth: 0.75))
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .accessibilityLabel("Get \(app.name)")
+                .disabled(reason != nil)
+                .accessibilityLabel(version == nil ? "Get \(app.name)" : "Get \(app.name) \(build.version)")
+                .accessibilityHint(reason ?? "")
             }
         }
         .buttonStyle(PressableButtonStyle(scale: 0.9))
-        .animation(Theme.spring, value: store.download(repoID: repo.id, app: app)?.importing)
+        .animation(Theme.spring, value: store.download(repoID: repo.id, app: app, version: build)?.importing)
     }
 }
 

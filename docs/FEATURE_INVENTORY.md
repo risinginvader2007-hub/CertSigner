@@ -83,7 +83,8 @@ tested on a device is tracked in [`STATUS.md`](STATUS.md).
 - [x] Add Source sheet: URL field, Paste from Clipboard, Add (validates, loading state, error + shake), Cancel
 - [x] Source page: header (icon, host, subtitle, error, app count, Website link), search, pull to refresh
 - [x] App rows with GET pill → download (progress ring, tap to cancel) → sign & install
-- [x] App detail: header badges, Get / Download & Review, download progress card (bytes, speed, Cancel), What's New, About (More/Less), Screenshots, Versions (menu: Sign & Install, Download & Review, Copy Download Link; show all), Information
+- [x] One row per app (sources that list each version as its own entry are merged per bundle ID); "N versions" chip; GET disabled with the reason when the latest has no usable download
+- [x] App detail: header badges, Get / Download & Review, download progress card (bytes, speed, Cancel), What's New, About (More/Less), Screenshots, Versions (newest first; version, build, date, size, minimum iOS, "Latest" badge; per-version GET; menu: Sign & Install, Download & Review, Copy Download Link; show all), Information
 - [x] Auto refresh every 30 min on appear; refreshes owned by the store (never shown as "cancelled"), 20 s timeout, one retry, ETag / Last-Modified
 - [x] Loading skeleton, empty state, plain-language error with Retry and Details
 - [x] Downloads of files ≥ 8 MB use up to 8 parallel connections
@@ -144,5 +145,6 @@ Automated check after stage 6: every Button / Label / Toggle / Picker / sheet / 
 17. Scrolling and accent changes feel smooth at 120 Hz.
 18. Light mode: background glows clearly visible (default accent and a blend); text on and around them readable; dark mode looks exactly as before.
 20. In-app update (needs an installed build that has the updater and a newer release): Home card / Settings → Updates → sheet shows notes, certificate, all checks green → Update → download, verify, sign → iOS prompt → Install → CertSigner closes → open it → "Updated to build N"; certificates, signed apps and settings still there. Also: Skip This Build hides the card; a certificate from another team is refused with a clear message.
+21. Sources: search "Instag" (AppTesters) → one Instagram row per source with "N versions"; the detail lists every version newest first (454.0.0 on top, "Latest"), each with its own GET. Same in All Apps, each source's list and the Search tab; scrolling a big source stays smooth.
 19. Switch Light ↔ Dark in Settings and from Control Center: the glows fade over with no flash. Glow intensity Low / Normal / High changes the glows, and each appearance remembers its own choice.
 

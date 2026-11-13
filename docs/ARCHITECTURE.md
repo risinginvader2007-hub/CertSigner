@@ -71,6 +71,16 @@ Last checked against the code: 2026-11-13 (commit `59dcece`). Originally from th
 - Sources: `RepositoryStore` (store-owned refresh tasks, ETag / Last-Modified, icon disk cache,
   `reason(for:)`, `technicalDetail(for:)`), `FileDownloader` (up to 8 parallel byte-range
   connections for files ≥ 8 MB).
+  - `RepositoryParser` reads both layouts (a `versions` array per app, or one app entry per
+    version as AppTesters does) and `merge`s them: **one `RepoApp` per bundle ID** (name when there
+    is none) with every version, exact duplicates (same version + download URL) removed, sorted
+    newest first by `VersionOrder` (numeric components, pre-releases before the release, dates
+    break ties). `RepoApp.id` is the bundle ID. Saved sources are merged again on load. Each
+    refresh logs "raw entries → apps, versions (duplicates removed)".
+  - Downloads are tracked per version; a version without a link, with an http link, or that
+    answered 404 / 410 has its GET disabled with the reason (`unavailableReason`).
+  - `SourceSearch`: per-list search with a 250 ms debounce, filtering and sorting off the main
+    thread, never repeating an entry (one row per app per source).
 - Web hand-off: `WebImport` (parses `certsigner://import#…`), `LaunchSignature` ("Signed with X,
   expires Y" from the app's own embedded profile, once per signature).
 - Other: `ImportCoordinator`, `AppLog`, `Haptics`. `Extensions/Formatting.swift`.

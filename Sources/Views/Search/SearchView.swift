@@ -33,11 +33,11 @@ struct SearchView: View {
         }
     }
 
+    /// Debounced, off-main search over every source (one row per app per source).
+    @StateObject private var sourceSearch = SourceSearch(sortByName: true, emptyQueryShowsAll: false)
+
     private var sourceApps: [SourceEntry] {
-        guard !trimmed.isEmpty else { return [] }
-        return repositories.allApps.filter {
-            $0.app.name.lowercased().contains(trimmed) || $0.app.bundleID.lowercased().contains(trimmed)
-        }
+        trimmed.isEmpty ? [] : sourceSearch.results
     }
 
     var body: some View {
@@ -110,6 +110,10 @@ struct SearchView: View {
             .animation(Theme.spring, value: trimmed)
             .navigationTitle("Search")
             .searchable(text: $query, prompt: "Apps, certificates and sources")
+            .onChange(of: query) { sourceSearch.query = $0 }
+            .onReceive(repositories.$repositories) { list in
+                sourceSearch.update(list.flatMap { repo in repo.apps.map { SourceEntry(repo: repo, app: $0) } })
+            }
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case .app(let id): SignedAppDetailView(appID: id)
