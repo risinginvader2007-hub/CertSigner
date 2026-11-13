@@ -35,7 +35,7 @@ Single developer (GitHub `risinginvader2007-hub`), who tests on a real iPhone.
 
 1. Work on branch `ui-overhaul`. `main` is what CI publishes.
 2. Small commits, **one issue per commit**. Commit / push only when the owner asks.
-3. Push, get CI green (both workflows), then release with a fast-forward:
+3. Push, get the CI the change needs green (see "CI efficiency" below), then release with a fast-forward:
    `git checkout main && git merge --ff-only ui-overhaul && git push origin main && git checkout ui-overhaul`
 4. Each delivery ends with: the list of changed files, what is verified vs not, and an
    **iPhone test checklist**.
@@ -54,6 +54,28 @@ gh run view <id> -R $R --log | grep -E "Test Case .*(passed|failed)|Executed [0-
 
 The release title "CertSigner (build N)" uses the **Build IPA run number**, which counts every run
 (branch and web-only runs too), so build numbers skip.
+
+## CI efficiency (standing rule)
+
+Be conservative with CI. Before starting a workflow, decide whether the change actually needs it,
+and say briefly why when a run is expensive or could be redundant.
+
+| Change | CI |
+|---|---|
+| Documentation only | None. |
+| UI only | The relevant UI tests; a Build IPA only when the owner needs it for device verification. |
+| Isolated logic | Targeted tests first, not the full suite. |
+| Signing pipeline / certificates | The relevant signing tests. |
+| Release preparation | The checks that validate the exact release commit. |
+
+- No duplicate runs. Never re-run successful tests for an unchanged commit.
+- Don't run the full suite to verify a small, isolated fix when targeted tests are enough.
+- Don't start Build IPA just because the Signing test ran, or the other way round.
+- Keep the essential release safety checks. Never claim something was tested when it wasn't.
+- Be aware the workflows also start **automatically**: "Signing test" on every push to `main` or
+  `ui-overhaul` (full suite; there is no input for running a subset), and "Build IPA" on every push
+  to `main` (that run publishes the release). Count those before dispatching anything extra, and
+  don't dispatch a second run of what a push already started.
 
 ## Rules for any change
 
