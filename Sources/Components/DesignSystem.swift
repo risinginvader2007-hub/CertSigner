@@ -252,10 +252,10 @@ struct AuroraBackground: View {
         .onChange(of: scheme) { newScheme in
             let next = SchemeFade(fromDark: newScheme != .dark, start: CACurrentMediaTime(),
                                   duration: reduceMotion ? 0.2 : Motion.themeCrossfade)
-            schemeFade = next
+            self.schemeFade = next
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: UInt64((next.duration + 0.05) * 1_000_000_000))
-                if schemeFade == next { schemeFade = nil }
+                if self.schemeFade == next { self.schemeFade = nil }
             }
         }
     }
