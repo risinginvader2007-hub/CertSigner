@@ -142,8 +142,10 @@ on mismatch (the original behaviour).
   publishes once inside `withAnimation(.easeInOut(duration: 0.35))`, then once ~0.4 s later to
   clear `fade`. `ThemeFade` lets per-frame drawers interpolate gradient stops locally.
 - `AuroraBackground`: one `Canvas` (`drawingGroup`), 4 radial-gradient blobs on 21–39 s
-  figure-eight paths, ±12 % breathing, opacity 0.65–1; strength (dark 0.85 / light 0.36) ×
-  (0.55 + 0.45 × intensity); `.plusLighter` in dark mode;
+  figure-eight paths (`AuroraGeometry`), ±12 % breathing, opacity 0.65–1. Per-appearance values
+  (opacity, size, saturation, blend, tinted base, vignette, light readability cap) live in
+  `AuroraStyle` (see `DESIGN.md`), scaled by (0.55 + 0.45 × intensity) and the per-appearance
+  Glow intensity setting; `.plusLighter` in dark mode, normal blending in light;
   `TimelineView(.animation(minimumInterval: 1/30))`. Drift is paused when the tab is hidden, the
   scene is inactive, the setting is off, Reduce Motion or Low Power Mode is on, or
   `BackgroundActivity.paused`; it still redraws colours during an accent fade. `AuroraClock` holds

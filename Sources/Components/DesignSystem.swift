@@ -181,7 +181,8 @@ private struct SymbolVariableColor: ViewModifier {
 /// drawn by ONE Canvas (Metal-backed via drawingGroup) instead of a view per light: no blur
 /// filters, no per-frame view diffing. Capped at 30 fps (the drift is slow, so 30 looks the same).
 /// Holds still with Reduce Motion, Low Power Mode, the setting off, on hidden tabs, while
-/// scrolling, while a sheet is up and during accent transitions (the colours still cross-fade).
+/// scrolling and while a sheet is up. Accent changes and light ↔ dark switches redraw for their
+/// 0.35 s fade even while the drift is held. All numbers per appearance live in `AuroraStyle`.
 struct AuroraBackground: View {
     var intensity: Double = 1
 
@@ -192,33 +193,14 @@ struct AuroraBackground: View {
     @Environment(\.auroraActive) private var active
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(SettingsKeys.backgroundAnimation) private var animationEnabled = true
+    @AppStorage(SettingsKeys.glowIntensityLight) private var lightLevel: GlowLevel = .normal
+    @AppStorage(SettingsKeys.glowIntensityDark) private var darkLevel: GlowLevel = .normal
     @ObservedObject private var power = PowerMonitor.shared
     @ObservedObject private var activity = BackgroundActivity.shared
+    @State private var schemeFade: SchemeFade?
 
     static let frameRate: Double = 30
-
-    /// One blob: its own looping path (a slow figure-eight), speed, size and opacity breathing.
-    private struct Blob {
-        let colorPosition: Double   // where on the theme gradient its colour comes from
-        let size: CGFloat           // × screen width
-        let base: CGPoint           // centre, as a fraction of the screen
-        let amplitude: CGSize       // travel, as a fraction of the screen
-        let period: Double          // seconds per loop (20 – 40 s)
-        let phase: Double
-        let opacity: Double
-    }
-
-    private static let blobs: [Blob] = [
-        Blob(colorPosition: 0, size: 1.25, base: CGPoint(x: 0.12, y: 0.10), amplitude: CGSize(width: 0.20, height: 0.08), period: 26, phase: 0, opacity: 1),
-        Blob(colorPosition: 0.5, size: 1.10, base: CGPoint(x: 0.88, y: 0.16), amplitude: CGSize(width: 0.18, height: 0.10), period: 34, phase: 1.7, opacity: 0.85),
-        Blob(colorPosition: 1, size: 0.95, base: CGPoint(x: 0.55, y: 0.36), amplitude: CGSize(width: 0.24, height: 0.11), period: 21, phase: 3.1, opacity: 0.6),
-        Blob(colorPosition: 0.25, size: 1.05, base: CGPoint(x: 0.30, y: 0.78), amplitude: CGSize(width: 0.22, height: 0.07), period: 39, phase: 4.4, opacity: 0.35)
-    ]
-
-    private static func color(at position: Double, in colors: [Color]) -> Color {
-        let index = Int((position * Double(colors.count - 1)).rounded())
-        return colors[min(max(index, 0), colors.count - 1)]
-    }
+    private static let lightTraits = UITraitCollection(userInterfaceStyle: .light)
 
     /// Drifting only on the visible screen, app active, setting on, Reduce Motion and Low Power
     /// off, not scrolling and no sheet up. Otherwise the timeline pauses (the static version).
@@ -227,33 +209,38 @@ struct AuroraBackground: View {
     }
 
     var body: some View {
-        // Bright, glowing lights: dimmer screens (intensity < 1) still keep most of the glow.
-        let strength = (scheme == .dark ? 0.85 : 0.36) * (0.55 + 0.45 * intensity)
         let dark = scheme == .dark
-        let base = gradient.isEmpty ? Theme.signature : gradient
+        let colors = gradient.isEmpty ? Theme.signature : gradient
+        // Light mode works on resolved, saturation-boosted colours; dark mode uses the colours as they are.
+        let lightColors = colors.map { AuroraStyle.light.boosted(RGBA($0, traits: Self.lightTraits)) }
+        // Dimmer screens (intensity < 1) still keep most of the glow.
+        let darkGain = AuroraStyle.dark.gain(intensity: intensity, level: darkLevel)
+        let lightGain = AuroraStyle.light.gain(intensity: intensity, level: lightLevel)
         let fade = self.fade
-        // An accent transition redraws for its 0.35 s even when the drift is paused.
-        TimelineView(.animation(minimumInterval: 1 / Self.frameRate, paused: !(drifting || (fade != nil && active)))) { context in
+        let schemeFade = self.schemeFade
+        let transitioning = fade != nil || schemeFade != nil
+        TimelineView(.animation(minimumInterval: 1 / Self.frameRate, paused: !(drifting || (transitioning && active)))) { context in
             let time = AuroraClock.shared.time(at: context.date)
-            let palette = fade.map { $0.stops(at: CACurrentMediaTime()).map(\.color) } ?? base
+            let now = CACurrentMediaTime()
+            let stops = fade?.stops(at: now)
+            let darkPalette = stops.map { $0.map(\.color) } ?? colors
+            let lightPalette = stops.map { $0.map { AuroraStyle.light.boosted($0) } } ?? lightColors
             Canvas { ctx, size in
-                ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Theme.background))
-                // The lights add up and glow where they meet (dark mode). Drawn straight onto the
-                // near-black base: no extra transparency layer (that cost more than it saved).
-                if dark { ctx.blendMode = .plusLighter }
-                for blob in Self.blobs {
-                    let angle = 2 * Double.pi * time / blob.period + blob.phase
-                    let diameter = size.width * blob.size * CGFloat(1 + 0.12 * sin(angle + 1.1))
-                    // Each light brightens and dims on its own rhythm (≈ 65 – 100 %).
-                    let pulse = 0.825 + 0.175 * sin(angle * 2 + 2.3)
-                    let opacity = min(1, strength * blob.opacity * pulse)
-                    let center = CGPoint(x: size.width * (blob.base.x + blob.amplitude.width * CGFloat(sin(angle))),
-                                         y: size.height * (blob.base.y + blob.amplitude.height * CGFloat(sin(2 * angle + blob.phase))))
-                    let color = Self.color(at: blob.colorPosition, in: palette)
-                    let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)
-                    ctx.fill(Path(ellipseIn: rect), with: .radialGradient(
-                        Gradient(colors: [color.opacity(opacity), color.opacity(opacity * 0.55), color.opacity(0)]),
-                        center: center, startRadius: 0, endRadius: diameter / 2))
+                if let schemeFade, schemeFade.isRunning(at: now) {
+                    // Old appearance underneath, the new one fading in on top (0.35 s theme curve).
+                    Self.draw(ctx, dark: schemeFade.fromDark, size: size, time: time,
+                              darkPalette: darkPalette, darkGain: darkGain, lightPalette: lightPalette, lightGain: lightGain)
+                    var top = ctx
+                    top.opacity = schemeFade.progress(at: now)
+                    top.drawLayer { layer in
+                        Self.draw(layer, dark: !schemeFade.fromDark, size: size, time: time,
+                                  darkPalette: darkPalette, darkGain: darkGain, lightPalette: lightPalette, lightGain: lightGain)
+                    }
+                } else if dark {
+                    Self.drawDark(ctx, size: size, time: time, palette: darkPalette, gain: darkGain, base: Theme.background)
+                } else {
+                    Self.drawLight(ctx, frame: AuroraStyle.light.lightFrame(
+                        time: time, size: size, palette: lightPalette, gain: lightGain))
                 }
             }
             .drawingGroup()
@@ -262,6 +249,66 @@ struct AuroraBackground: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .onAppear { BackgroundActivity.shared.installIfNeeded() }
+        .onChange(of: scheme) { newScheme in
+            let next = SchemeFade(fromDark: newScheme != .dark, start: CACurrentMediaTime(),
+                                  duration: reduceMotion ? 0.2 : Motion.themeCrossfade)
+            schemeFade = next
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64((next.duration + 0.05) * 1_000_000_000))
+                if schemeFade == next { schemeFade = nil }
+            }
+        }
+    }
+
+    /// One whole frame of either appearance (used while switching between them).
+    private static func draw(_ ctx: GraphicsContext, dark: Bool, size: CGSize, time: Double,
+                             darkPalette: [Color], darkGain: Double, lightPalette: [RGBA], lightGain: Double) {
+        if dark {
+            drawDark(ctx, size: size, time: time, palette: darkPalette, gain: darkGain, base: AuroraStyle.darkBase.color)
+        } else {
+            drawLight(ctx, frame: AuroraStyle.light.lightFrame(time: time, size: size, palette: lightPalette, gain: lightGain))
+        }
+    }
+
+    /// Dark mode, as before: the lights add up and glow where they meet (plusLighter), drawn
+    /// straight onto the near-black base (no extra transparency layer: it cost more than it saved).
+    private static func drawDark(_ context: GraphicsContext, size: CGSize, time: Double, palette: [Color],
+                                 gain: Double, base: Color) {
+        let style = AuroraStyle.dark
+        var ctx = context
+        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(base))
+        ctx.blendMode = .plusLighter
+        for (index, blob) in AuroraGeometry.blobs.enumerated() {
+            let placed = AuroraGeometry.place(blob, time: time, size: size, sizeScale: style.sizeScale)
+            let opacity = min(1, gain * style.blobOpacities[index] * placed.pulse)
+            let color = palette[AuroraGeometry.index(at: blob.colorPosition, count: palette.count)]
+            fillGlow(ctx, center: placed.center, diameter: placed.diameter, color: color, opacity: opacity)
+        }
+    }
+
+    /// Light mode: accent-tinted off-white base, saturated accent glows with normal blending (they
+    /// tint the surface instead of vanishing like a lightening blend would), then a soft vignette.
+    private static func drawLight(_ ctx: GraphicsContext, frame: AuroraStyle.LightFrame) {
+        let rect = CGRect(origin: .zero, size: frame.size)
+        ctx.fill(Path(rect), with: .color(frame.base.color))
+        for glow in frame.glows {
+            fillGlow(ctx, center: glow.center, diameter: glow.diameter, color: glow.color.color, opacity: glow.alpha)
+        }
+        if frame.vignette > 0 {
+            let edge = AuroraStyle.vignetteColor.color
+            ctx.fill(Path(rect), with: .radialGradient(
+                Gradient(stops: [.init(color: edge.opacity(0), location: 0.55),
+                                 .init(color: edge.opacity(frame.vignette), location: 1)]),
+                center: CGPoint(x: rect.midX, y: rect.midY), startRadius: 0, endRadius: frame.vignetteRadius))
+        }
+    }
+
+    /// One light: full at the centre, 55 % halfway, gone at the edge.
+    private static func fillGlow(_ ctx: GraphicsContext, center: CGPoint, diameter: CGFloat, color: Color, opacity: Double) {
+        let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)
+        ctx.fill(Path(ellipseIn: rect), with: .radialGradient(
+            Gradient(colors: [color.opacity(opacity), color.opacity(opacity * 0.55), color.opacity(0)]),
+            center: center, startRadius: 0, endRadius: diameter / 2))
     }
 }
 

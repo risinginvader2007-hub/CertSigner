@@ -96,7 +96,7 @@ tested on a device is tracked in [`STATUS.md`](STATUS.md).
 - [x] Signing: Signing mode (sliding control), Install after signing, Delete original IPA, Remove extensions by default, Keep bundle ID by default
 - [x] Install: Close install sheet automatically toggle; Install Method & Server → method sliding control, Semi-Local fallback toggle, backloop.dev update, public cert status, My Certificate (hostname, PEM files, save/remove), tips
 - [x] This Device: UDID field, Clear UDID
-- [x] Appearance: Theme sliding control (System / Light / Dark, snapshot cross-fade), Accent picker with Solid / Blended switch (16 blends), custom blends (two colour pickers, long-press delete), background animation toggle, App icon picker (Ocean / Sunset / Mint / Midnight, no system alert where supported)
+- [x] Appearance: Theme sliding control (System / Light / Dark, snapshot cross-fade), Accent picker with Solid / Blended switch (16 blends), custom blends (two colour pickers, long-press delete), background animation toggle, Glow intensity (Low / Normal / High sliding control, stored separately for light and dark), App icon picker (Ocean / Sunset / Mint / Midnight, no system alert where supported)
 - [x] Storage dashboard: ring chart, device free space, five categories with detail screens (sort, swipe delete, Delete All), Clear Cache, Remove Unused IPAs, Clear Log with "Freed …" toasts, tips
 - [x] Diagnostics: Export Log File (ShareLink, preparing state), Clear Log
 - [x] About: version, Source on GitHub link
@@ -140,4 +140,6 @@ Automated check after stage 6: every Button / Label / Toggle / Picker / sheet / 
 15. Settings → Appearance: Blended accents, a custom blend (create, long-press delete), background animation toggle; app icon change shows no system alert.
 16. Storage dashboard: categories, detail screens, Clear Cache / Remove Unused IPAs show "Freed …".
 17. Scrolling and accent changes feel smooth at 120 Hz.
+18. Light mode: background glows clearly visible (default accent and a blend); text on and around them readable; dark mode looks exactly as before.
+19. Switch Light ↔ Dark in Settings and from Control Center: the glows fade over with no flash. Glow intensity Low / Normal / High changes the glows, and each appearance remembers its own choice.
 

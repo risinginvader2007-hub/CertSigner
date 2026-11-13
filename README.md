@@ -69,7 +69,7 @@ Open it in Safari on your iPhone, then share the file to FlareStore (or any sign
 4. Renew before it expires (Let's Encrypt: 90 days) and import again.
 
 ### 7. Settings
-Certificates, signing defaults (signing mode, remove extensions, keep bundle ID), install after signing, delete original IPA after signing, install method and server certificates, close the install sheet automatically, UDID, appearance (system / light / dark), accent colour (solid colours, blends and your own custom blends), background animation, **app icon** (Ocean, Sunset, Mint, Midnight), a **storage dashboard** (usage by category, Clear Cache, Remove Unused Imports, Clear Log), **Export Log File**, and About.
+Certificates, signing defaults (signing mode, remove extensions, keep bundle ID), install after signing, delete original IPA after signing, install method and server certificates, close the install sheet automatically, UDID, appearance (system / light / dark), accent colour (solid colours, blends and your own custom blends), background animation and glow intensity (separately for light and dark), **app icon** (Ocean, Sunset, Mint, Midnight), a **storage dashboard** (usage by category, Clear Cache, Remove Unused Imports, Clear Log), **Export Log File**, and About.
 
 ## Web installer ("Get CertSigner")
 

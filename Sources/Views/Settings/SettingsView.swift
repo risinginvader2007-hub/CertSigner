@@ -14,6 +14,9 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.autoCloseInstall) private var autoCloseInstall = true
     @AppStorage(SettingsKeys.signingMode) private var signingMode: SigningMode = .compatibility
     @AppStorage(SettingsKeys.backgroundAnimation) private var backgroundAnimation = true
+    @AppStorage(SettingsKeys.glowIntensityLight) private var lightGlow: GlowLevel = .normal
+    @AppStorage(SettingsKeys.glowIntensityDark) private var darkGlow: GlowLevel = .normal
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showCertificatePicker = false
     @AppStorage(SettingsKeys.deleteOriginal) private var deleteOriginal = true
@@ -227,6 +230,22 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
             }
+
+            // Stored per appearance: this edits the one on screen (light or dark).
+            VStack(alignment: .leading, spacing: Space.x2) {
+                Text("Glow intensity")
+                SlidingSegmentedControl(
+                    selection: colorScheme == .dark ? $darkGlow : $lightGlow,
+                    options: GlowLevel.allCases.map { .init(value: $0, title: $0.title) },
+                    accessibilityTitle: "Glow intensity"
+                )
+                Text(colorScheme == .dark
+                     ? "How bright the background glows are in dark mode. Light mode has its own setting."
+                     : "How strong the background glows are in light mode. Dark mode has its own setting.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, Space.x1)
 
             VStack(alignment: .leading, spacing: Space.x3) {
                 Text("App icon")

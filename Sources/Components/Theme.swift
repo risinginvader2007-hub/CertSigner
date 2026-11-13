@@ -62,6 +62,9 @@ enum SettingsKeys {
     static let autoCloseInstall = "install.autoCloseSheet"
     static let signingMode = "signing.mode"
     static let backgroundAnimation = "ui.backgroundAnimation"
+    /// Glow intensity (`GlowLevel` raw value), one per appearance.
+    static let glowIntensityLight = "ui.glowIntensity.light"
+    static let glowIntensityDark = "ui.glowIntensity.dark"
     /// Semi-Local: use Fully Local instead when api.palera.in is unreachable and a server certificate exists.
     static let installPaleraFallback = "install.paleraFallback"
 

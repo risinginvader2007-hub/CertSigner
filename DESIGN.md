@@ -75,6 +75,24 @@ background Canvas blends its own colours from `ThemeFade`. System / Light / Dark
 `AppearanceCrossfade`: a snapshot of the screen fades out over the new appearance, so there is
 never a white or black flash, even when switching quickly and repeatedly.
 
+**Background glows** (`AuroraStyle` in `Components/AuroraStyle.swift`, the only place their
+numbers live; `AuroraBackground` draws them):
+
+| | Dark (unchanged) | Light |
+|---|---|---|
+| Blend | `plusLighter` (lights add up) | normal (glows tint the surface) |
+| Peak opacity per blob × `strength` | 0.85 × 1 / 0.85 / 0.6 / 0.35 | 1 × 0.65 / 0.6 / 0.52 / 0.45 |
+| Blob size | × 1 | × 1.2 |
+| Colours | the accent's gradient | the same stops, saturation × 1.25 |
+| Base | `Theme.background` | `Theme.background` light + 6 % of the accent's mid colour |
+| Vignette | none | slate, 0 at 55 % of the half-diagonal → 0.07 at the corners |
+| Readability cap | — | each blob limited so the background behind it keeps luminance ≥ 0.30 (black text ≥ 7:1; tested ≥ 4.5:1 everywhere) |
+
+Opacity is also scaled by the screen's intensity (`0.55 + 0.45 × intensity`), the ±17 % pulse,
+and the user's **Glow intensity** (Low 0.6 / Normal 1 / High 1.3, stored per appearance).
+A light ↔ dark switch (in the app or from the system) fades the old background into the new one
+over 0.35 s with the theme curve (`SchemeFade`).
+
 **Reduce Motion** swaps every slide, scale and sweep for a short fade (`Motion.adaptive`,
 `reduceMotion ? Motion.fade : …`). The background drift stops and the shine sweep is removed.
 
