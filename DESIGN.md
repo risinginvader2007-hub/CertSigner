@@ -86,7 +86,7 @@ numbers live; `AuroraBackground` draws them):
 | Colours | the accent's gradient | the same stops, saturation × 1.25 |
 | Base | `Theme.background` | `Theme.background` light + 6 % of the accent's mid colour |
 | Vignette | none | slate, 0 at 55 % of the half-diagonal → 0.07 at the corners |
-| Readability cap | — | each blob limited so the background behind it keeps luminance ≥ 0.30 (black text ≥ 7:1; tested ≥ 4.5:1 everywhere) |
+| Readability cap | — | each blob limited so the background behind it keeps luminance ≥ 0.33 (black text ≥ 7.6:1 behind one blob; tested ≥ 4.5:1 everywhere, overlaps included) |
 
 Opacity is also scaled by the screen's intensity (`0.55 + 0.45 × intensity`), the ±17 % pulse,
 and the user's **Glow intensity** (Low 0.6 / Normal 1 / High 1.3, stored per appearance).

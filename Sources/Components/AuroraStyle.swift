@@ -40,7 +40,7 @@ enum GlowLevel: String, CaseIterable, Identifiable {
 ///   normal blending, 25 % more saturated, more opaque and 1.2× larger, over an off-white base
 ///   tinted with the accent, with a soft vignette at the edges. Each light blob is capped so the
 ///   background behind it keeps a relative luminance of at least `minLuminance` (black text
-///   ≥ 7:1 behind one blob; the test checks ≥ 4.5:1 everywhere, overlaps and vignette included).
+///   ≥ 7.6:1 behind one blob; the test checks ≥ 4.5:1 everywhere, overlaps and vignette included).
 struct AuroraStyle {
     let dark: Bool
     /// Overall strength at screen intensity 1 and glow level Normal.
@@ -65,7 +65,7 @@ struct AuroraStyle {
 
     static let light = AuroraStyle(dark: false, strength: 1, blobOpacities: [0.65, 0.6, 0.52, 0.45],
                                    sizeScale: 1.2, saturation: 1.25, additive: false, baseTint: 0.06,
-                                   vignette: 0.07, minLuminance: 0.30)
+                                   vignette: 0.07, minLuminance: 0.33)
 
     static func forScheme(_ scheme: ColorScheme) -> AuroraStyle { scheme == .dark ? .dark : .light }
 
