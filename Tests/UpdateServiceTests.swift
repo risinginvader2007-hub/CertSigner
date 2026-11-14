@@ -254,6 +254,34 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertEqual(upToDate?.latestBuild, 100, "no newer build: the feed's answer removes the dot")
         XCTAssertFalse(UpdateDotRules.showsDot(cache: upToDate, installedBuild: 100, skippedBuild: 0, installing: false))
     }
+
+    // MARK: Update sheet content (never blank)
+
+    /// Build 102 bug: the sheet opened with only a title and Close. Every state must show something:
+    /// the saved check alone (dot shown, no details loaded yet) is a visible "Loading build N…".
+    @MainActor
+    func testSheetShowsLoadingWhenOnlyTheSavedCheckExists() {
+        let defaults = freshDefaults()
+        UpdateDotRules.save(cache(104), to: defaults)
+        let service = UpdateService(defaults: defaults, installedBuild: 102)
+        XCTAssertTrue(service.showsDot, "red dot from the saved check")
+        XCTAssertNil(service.available, "no release details loaded yet: the sheet has to load them")
+        XCTAssertEqual(service.sheetContent, .loading(savedBuild: 104))
+    }
+
+    @MainActor
+    func testSheetContentForEveryCheckState() {
+        let update = AvailableUpdate(manifest: manifest(build: 104), ipaURL: URL(string: "https://github.com/x")!, pageURL: nil)
+        func content(_ state: UpdateService.CheckState, cache saved: UpdateCheckCache? = nil, installed: Int = 102) -> UpdateService.SheetContent {
+            UpdateService.sheetContent(checkState: state, cache: saved, installedBuild: installed)
+        }
+        XCTAssertEqual(content(.idle), .loading(savedBuild: nil), "nothing saved: 'Checking for updates…'")
+        XCTAssertEqual(content(.checking, cache: cache(104)), .loading(savedBuild: 104), "background check running")
+        XCTAssertEqual(content(.checking, cache: cache(102)), .loading(savedBuild: nil), "saved build isn't newer")
+        XCTAssertEqual(content(.failed("GitHub answered 500.")), .failed("GitHub answered 500."), "error state with Try Again")
+        XCTAssertEqual(content(.upToDate(Date())), .upToDate)
+        XCTAssertEqual(content(.available(update), cache: cache(104)), .update(update), "installed 102 < saved 104: details")
+    }
 }
 
 private extension ReleaseManifest {

@@ -7,10 +7,10 @@ Last updated: **2026-11-14** (builds 88–101; in-app update, Sources and light-
 
 | | |
 |---|---|
-| Branches | `main` = `9e0446d` (build 102); `ui-overhaul` = `main` + signing identity guards (branch build 103, not released) |
+| Branches | `main` = `2599c66` (build 104); `ui-overhaul` = `main` + update sheet fix (branch build 105, not released) |
 | Tags | `latest` (moved by CI to each release), `pre-ui-overhaul` = `41316d2` (rollback point, release build 24) |
-| Latest release | "CertSigner (build 102)" from `9e0446d`, published 2026-11-14 (same code as branch build 101) |
-| CI at `9e0446d` | Build IPA runs 101, 102 ✅; Signing test run 75 ✅ (70/70 XCTests) |
+| Latest release | "CertSigner (build 104)" from `2599c66`, published 2026-11-14 (app code = branch build 103) |
+| CI at `2599c66` | Build IPA runs 103, 104 ✅; Signing test run 76 ✅ (76/76 XCTests) |
 | Web installer | https://risinginvader2007-hub.github.io/CertSigner/ — HTTP 200 on 2026-11-13 |
 | Relay | https://get-certsigner.risinginvader2007.workers.dev — HTTP 200 on 2026-11-13 |
 | `api.palera.in/genPlist` | HTTP 200 on 2026-11-13 (Semi-Local available) |
@@ -33,7 +33,10 @@ Last updated: **2026-11-14** (builds 88–101; in-app update, Sources and light-
 
 Ask the owner to test these (iPhone test checklist in `docs/FEATURE_INVENTORY.md`):
 
-0. **Signing identity guards** (branch build 103, checklist item 13): Compatibility warning for a
+0. **Update sheet never blank** (branch build 105): opened from the red dot with only the saved
+   check, during or after a background check — must show loading, the details, an error with Try
+   Again + Share Log, or "up to date". The log has "update: sheet opened (…)" and "update: check started (…)".
+0. **Signing identity guards** (released in build 104, checklist item 13): Compatibility warning for a
    shared App ID, Strict refusal of CertSigner's own bundle ID, per-bundle identity in the log.
    Known issue, not fixed: every app signed with an explicit profile shares that App ID
    (`docs/DECISIONS.md`); Keychain items (p12 passwords) are readable by such apps.
@@ -117,6 +120,7 @@ Build number = "Build IPA" run number, which also counts branch and web-only run
 | 98 | `dde6b8d` | 11-14 | Icon-change diagnostics (found the SIGTRAP after the private call) |
 | 100 | `8fe2b35` | 11-14 | Icon change: nonisolated completion block (crash fix; = branch build 99) |
 | 102 | `9e0446d` | 11-14 | Update dot (Settings tab + Updates row) |
+| 104 | `2599c66` | 11-14 | Signing identity guards (Strict self-ID refusal, shared-identity warning, per-bundle log) |
 
 Full list: `gh run list -R risinginvader2007-hub/CertSigner -w "Build IPA" -b main`.
 

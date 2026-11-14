@@ -20,14 +20,16 @@ struct UpdateSheet: View {
     /// A certificate picked on this sheet (nil = the best match for the installed copy).
     @State private var preferredCertificateID: UUID?
     @State private var showCertificatePicker = false
+    /// The app log, for "Share Log" when the check itself fails.
+    @State private var appLogURL: URL?
     @AppStorage(SettingsKeys.autoCloseInstall) private var autoClose = true
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.x5) {
-                    switch updates.checkState {
-                    case .available(let update):
+                    switch updates.sheetContent {
+                    case .update(let update):
                         header(update)
                         if updates.runState == .idle {
                             notes(update)
@@ -35,12 +37,18 @@ struct UpdateSheet: View {
                         } else {
                             progress(update)
                         }
-                    case .checking:
-                        LoadingSkeleton()
+                    case .loading(let savedBuild):
+                        loading(savedBuild)
                     case .failed(let message):
                         ErrorState(title: "Couldn't check for updates", message: message,
-                                   onRetry: { Task { await updates.check() } })
-                    case .idle, .upToDate:
+                                   onRetry: {
+                                       Task {
+                                           await updates.check()
+                                           appLogURL = AppLog.exportCopy()
+                                       }
+                                   })
+                        appLogLink
+                    case .upToDate:
                         upToDate
                     }
                 }
@@ -60,7 +68,11 @@ struct UpdateSheet: View {
             .safeAreaInset(edge: .bottom) { actions.padding(Theme.padding) }
         }
         .task {
-            if updates.checkState == .idle { await updates.check() }
+            AppLog.info("update: sheet opened (\(updates.sheetContent.logName), installed \(UpdateRules.installedBuild), saved latest \(updates.cache.map { String($0.latestBuild) } ?? "none"))")
+            // No release details yet (fresh launch with only the saved check, a failed or older
+            // check, or one still running): load them, or wait for the running check.
+            if updates.available == nil { await updates.check() }
+            appLogURL = AppLog.exportCopy()
             plan = await updates.plan(certificates: certificates, udid: udid)
         }
         .sheet(isPresented: $showCertificatePicker) {
@@ -253,6 +265,33 @@ struct UpdateSheet: View {
             return "If you dismissed the prompt, reopen it. Keep CertSigner open until the transfer finishes."
         default:
             return "Keep CertSigner open until the transfer finishes."
+        }
+    }
+
+    /// Visible progress while the release details load (never an empty sheet).
+    private func loading(_ savedBuild: Int?) -> some View {
+        VStack(spacing: Space.x3) {
+            ProgressView()
+                .controlSize(.large)
+            Text(savedBuild.map { "Loading build \($0)…" } ?? "Checking for updates…")
+                .font(.headline)
+            Text("Getting the release details from GitHub.")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, Space.x8)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var appLogLink: some View {
+        if let url = appLogURL {
+            ShareLink(item: url) {
+                Label("Share Log", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.app(.secondary))
+            .frame(maxWidth: .infinity)
         }
     }
 

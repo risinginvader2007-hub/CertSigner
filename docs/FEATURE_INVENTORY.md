@@ -104,7 +104,7 @@ tested on a device is tracked in [`STATUS.md`](STATUS.md).
 - [x] Storage dashboard: ring chart, device free space, five categories with detail screens (sort, swipe delete, Delete All), Clear Cache, Remove Unused IPAs, Clear Log with "Freed …" toasts, tips
 - [x] Diagnostics: Export Log File (ShareLink, preparing state), Clear Log
 - [x] About: version, Updates row (status → update sheet), Check for updates automatically, Source on GitHub link
-- [x] Update sheet: build, size, date, What's new, Signs with (certificate, team, expiry, bundle ID kept), checks, Update / Skip This Build; Download → Verify → Sign → Install progress, Reopen Prompt, Try Again, Cancel
+- [x] Update sheet: build, size, date, What's new, Signs with (certificate, team, expiry, bundle ID kept), checks, Update / Skip This Build; Download → Verify → Sign → Install progress, Reopen Prompt, Try Again, Cancel; never blank: "Checking for updates…" / "Loading build N…" with a spinner while the details load (it loads them itself when opened, or waits for a running background check), "Couldn't check" with Try Again + Share Log, or "up to date"
 - [x] Home card "CertSigner build N is available"; "Updated to build N" toast after the update
 - [x] Update dot: small red dot (no number) on the Settings tab and next to the Updates row, shown at launch from the cached last check (no network wait); quiet re-check on launch and each return to the foreground (at most once a minute, off when "Check for updates automatically" is off); hidden for a skipped build, while installing, and once the installed build catches up; a failed check keeps the cached state; pop-in (fade only with Reduce Motion)
 - [x] Pull to refresh

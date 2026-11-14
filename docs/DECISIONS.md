@@ -104,6 +104,11 @@ Originally from the Hermes handover (§5, §6), 2026-11-07 → 11-10. Add new en
   was blocked by Turnstile; no API token was created, so CI can't redeploy the Worker.
 
 ## Pitfalls (don't repeat)
+- **The update sheet must never be blank** (build 102 bug): it showed a faint `LoadingSkeleton` while
+  a background check ran, and its own check returned at once when one was already running, so it
+  could stay on that near-invisible placeholder (no Update button). Now one check runs at a time in
+  its own task and a second caller awaits it; `UpdateService.sheetContent` maps every state to
+  visible content (spinner + text, details, error + Try Again + Share Log, up to date).
 
 ### Swift / XcodeGen
 - `ProvisioningProfile.parse` does not exist — use `ProfileParser.parse(data:)` (broke run 82).

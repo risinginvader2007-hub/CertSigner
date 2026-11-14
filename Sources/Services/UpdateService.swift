@@ -342,7 +342,8 @@ final class UpdateService: ObservableObject {
     private let defaults: UserDefaults
     private let installedBuild: Int
     private var runTask: Task<Void, Never>?
-    private var isChecking = false
+    /// The check in progress (nil when none).
+    private var checkTask: Task<Void, Never>?
 
     init(defaults: UserDefaults = .standard, installedBuild: Int = UpdateRules.installedBuild) {
         self.defaults = defaults
@@ -356,6 +357,40 @@ final class UpdateService: ObservableObject {
     var showsDot: Bool {
         UpdateDotRules.showsDot(cache: cache, installedBuild: installedBuild, skippedBuild: skippedBuild,
                                 installing: runState == .installing)
+    }
+
+    /// What the update sheet shows. Every state has visible content, so the sheet is never blank.
+    enum SheetContent: Equatable {
+        /// A check is running or about to (the sheet starts one when it opens without details).
+        /// `savedBuild`: a newer build from the saved check, shown while its details load.
+        case loading(savedBuild: Int?)
+        case update(AvailableUpdate)
+        case failed(String)
+        case upToDate
+
+        var logName: String {
+            switch self {
+            case .loading(let saved): return "loading" + (saved.map { " build \($0)" } ?? "")
+            case .update(let update): return "build \(update.build) details"
+            case .failed(let message): return "failed: \(message)"
+            case .upToDate: return "up to date"
+            }
+        }
+    }
+
+    static func sheetContent(checkState: CheckState, cache: UpdateCheckCache?, installedBuild: Int) -> SheetContent {
+        switch checkState {
+        case .available(let update): return .update(update)
+        case .failed(let message): return .failed(message)
+        case .upToDate: return .upToDate
+        case .idle, .checking:
+            let saved = cache.flatMap { $0.latestBuild > installedBuild ? $0.latestBuild : nil }
+            return .loading(savedBuild: saved)
+        }
+    }
+
+    var sheetContent: SheetContent {
+        Self.sheetContent(checkState: checkState, cache: cache, installedBuild: installedBuild)
     }
 
     var available: AvailableUpdate? {
@@ -404,7 +439,7 @@ final class UpdateService: ObservableObject {
     /// Quiet background check on launch and on every return to the foreground, at most once per
     /// `UpdateRules.checkInterval`, unless automatic checks are turned off in Settings.
     func checkIfDue(now: Date = Date()) async {
-        guard SettingsKeys.bool(Keys.autoCheck, default: true), !isChecking else { return }
+        guard SettingsKeys.bool(Keys.autoCheck, default: true), checkTask == nil else { return }
         let last = defaults.double(forKey: Keys.lastCheck)
         guard now.timeIntervalSince1970 - last >= UpdateRules.checkInterval else { return }
         defaults.set(now.timeIntervalSince1970, forKey: Keys.lastCheck)
@@ -415,19 +450,33 @@ final class UpdateService: ObservableObject {
 
     /// `quiet` (background) keeps the current result on screen while it runs, so the Home card and
     /// Settings row don't flicker; a failed quiet check keeps a previous result.
+    ///
+    /// Only one check runs at a time, in its own task (closing the sheet doesn't cancel it). A
+    /// second caller — e.g. the update sheet opening during a background check — waits for that
+    /// check's result instead of returning early.
     func check(quiet: Bool = false) async {
-        let hasResult: Bool
-        switch checkState {
-        case .available, .upToDate: hasResult = true
-        default: hasResult = false
-        }
-        if isChecking {
-            // A background check is running: show progress if asked to, its result will land.
-            if !quiet, !hasResult { checkState = .checking }
+        if let running = checkTask {
+            if !quiet, !Self.hasResult(checkState) { checkState = .checking }
+            AppLog.info("update: check already running\(quiet ? "" : "; the sheet waits for it")")
+            await running.value
             return
         }
-        isChecking = true
-        defer { isChecking = false }
+        let task = Task { await self.performCheck(quiet: quiet) }
+        checkTask = task
+        await task.value
+        checkTask = nil
+    }
+
+    private static func hasResult(_ state: CheckState) -> Bool {
+        switch state {
+        case .available, .upToDate: return true
+        default: return false
+        }
+    }
+
+    private func performCheck(quiet: Bool) async {
+        let hasResult = Self.hasResult(checkState)
+        AppLog.info("update: check started (\(quiet ? "background" : "manual"), installed \(installedBuild), saved latest \(cache.map { String($0.latestBuild) } ?? "none"))")
         if !quiet || !hasResult { checkState = .checking }
         let keepOnFailure = quiet && hasResult ? checkState : nil
         do {
@@ -448,6 +497,7 @@ final class UpdateService: ObservableObject {
                 AppLog.info("update: build \(update.build) available (installed \(installedBuild))")
             } else {
                 finishCheck(.upToDate(Date()))
+                AppLog.info("update: up to date (installed \(installedBuild), latest \(manifest.build))")
             }
         } catch {
             let message = (error as? UpdateError)?.localizedDescription ?? UpdateError.network(error.localizedDescription).localizedDescription
