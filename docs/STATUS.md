@@ -1,7 +1,7 @@
 # CertSigner status
 
 Living document: update it whenever something is verified, shipped or found broken.
-Last updated: **2026-11-14** (builds 88–96: light-mode glows, in-app updater, Sources fix, update signing fix).
+Last updated: **2026-11-14** (builds 88–96; in-app update, Sources and light-mode glows verified on iPhone).
 
 ## Snapshot
 
@@ -24,17 +24,17 @@ Last updated: **2026-11-14** (builds 88–96: light-mode glows, in-app updater, 
 - **On the owner's iPhone:** the web page signs and installs CertSigner; earlier builds' signing,
   install (Semi-Local via palera), Sources, deletes and the UI in general; Compatibility mode with
   Husk; **in-app update build 95 → 96** (2026-11-14). Builds ≤ 94 can't self-update (read-only
-  `OpenSSL.framework/OpenSSL` made zsign fail; fixed in `80e5e7f`).
+  `OpenSSL.framework/OpenSSL` made zsign fail; fixed in `80e5e7f`). **Sources** one row per app,
+  versions newest first (checklist 21), and **light-mode glows**, Glow intensity, light/dark
+  cross-fade (checklist 18–19), both 2026-11-14.
 
 ## Implemented, NOT verified on a device
 
 Ask the owner to test these (iPhone test checklist in `docs/FEATURE_INVENTORY.md`):
 
-0. **Builds 90–96** (newest work, checklist items 18, 19, 21 and 20's error paths):
-   - Update sheet's error text, Share Log, certificate picker, retry; Skip This Build; a
-     certificate from another team is refused.
-   - Sources: one row per app, versions newest first (AppTesters used to show duplicates).
-   - Light-mode glows visible and readable; Glow intensity setting; light/dark cross-fade.
+0. **Updater error cases** (checklist item 20, not yet tested): update sheet's error text,
+   Share Log, certificate picker, retry; Skip This Build; a certificate from another team is
+   refused.
 1. **Web certificate hand-off** (build 87): re-sign on the page → Install → "Import Certificate into
    CertSigner" → Open → toast "Imported … Ready to sign". Needs installed app ≥ build 87. This was
    the owner's last bug report ("No certificates yet" after installing from the web).
@@ -67,7 +67,7 @@ Known failing: nothing.
 
 ## Remaining work (priority)
 
-1. On-device check of builds 90–94 (Sources, light-mode glows, updater error paths).
+1. On-device check of the updater's error cases (checklist item 20).
 2. On-device confirmation of the build 87 web import.
 3. On-device verification of the install rewrite.
 4. Verify alert-free icon change, accent blends UI and 120 Hz performance.
