@@ -10,7 +10,10 @@ final class AppIconStore: ObservableObject {
     /// nil = the primary (Ocean) icon.
     @Published private(set) var selected: String?
 
-    typealias Setter = (String?, @escaping (Error?) -> Void) -> Void
+    /// The completion is `@Sendable`, so a closure passed to it is never main-actor isolated: the
+    /// system may call it on any queue (iOS 27 calls the private API's completion off the main
+    /// thread, and an isolated closure traps there with SIGTRAP).
+    typealias Setter = (String?, @escaping @Sendable (Error?) -> Void) -> Void
     private let setter: Setter
 
     init(initial: String?, setter: @escaping Setter = AppIconStore.setIcon) {
@@ -36,7 +39,8 @@ final class AppIconStore: ObservableObject {
         Haptics.impact(.light)
         withAnimation(animation) { selected = name }
         isChanging = true
-        setter(name) { [weak self] error in
+        setter(name) { @Sendable [weak self] error in
+            // Not isolated: only hop to the main actor, touch state there.
             Task { @MainActor in
                 guard let self else { return }
                 self.isChanging = false
@@ -57,29 +61,42 @@ final class AppIconStore: ObservableObject {
     /// sideloaded apps use it too). It is looked up at runtime and only called if UIApplication
     /// actually responds to it, so on any iOS that removes or renames it we fall back to the
     /// public API (alert included) and can never crash.
-    nonisolated static func setIcon(_ name: String?, completion: @escaping (Error?) -> Void) {
+    ///
+    /// `completion` always runs on the main thread, whatever queue the system calls back on.
+    nonisolated static func setIcon(_ name: String?, completion: @escaping @Sendable (Error?) -> Void) {
         DispatchQueue.main.async {
             let application = UIApplication.shared
             let selector = NSSelectorFromString("_setAlternateIconName:completionHandler:")
             let privateAvailable = application.responds(to: selector)
             IconChangeDiagnostics.begin(name: name, privateAvailable: privateAvailable)
             if privateAvailable {
-                typealias Completion = @convention(block) (NSError?) -> Void
-                typealias Method = @convention(c) (NSObject, Selector, NSString?, Completion) -> Void
+                // - (void)_setAlternateIconName:(NSString *)name completionHandler:(void (^)(NSError *))handler
+                typealias Method = @convention(c) (NSObject, Selector, NSString?, IconCompletionBlock) -> Void
                 let implementation = application.method(for: selector)
                 let call = unsafeBitCast(implementation, to: Method.self)
-                IconChangeDiagnostics.log("Icon change: calling private _setAlternateIconName:completionHandler: with \(name ?? "nil")")
-                call(application, selector, name as NSString?, { error in
-                    IconChangeDiagnostics.completion(path: "private", error: error)
-                    completion(error)
-                })
+                IconChangeDiagnostics.log("Icon change: calling private _setAlternateIconName:completionHandler: with \(name ?? "nil") on main=\(Thread.isMainThread)")
+                call(application, selector, name as NSString?, completionBlock(path: "private", completion: completion))
                 IconChangeDiagnostics.log("Icon change: private call returned")
             } else {
                 IconChangeDiagnostics.log("Icon change: FALLBACK to public setAlternateIconName (private method missing); iOS will show its alert")
-                application.setAlternateIconName(name) { error in
-                    IconChangeDiagnostics.completion(path: "public", error: error)
-                    completion(error)
-                }
+                let block = completionBlock(path: "public", completion: completion)
+                application.setAlternateIconName(name) { error in block(error as NSError?) }
+            }
+        }
+    }
+
+    typealias IconCompletionBlock = @convention(block) (NSError?) -> Void
+
+    /// The block handed to UIKit. Built in a nonisolated context and captures no main-actor state,
+    /// so it is safe on any queue: it logs where it fired, then hops to main for everything else.
+    nonisolated static func completionBlock(path: String, completion: @escaping @Sendable (Error?) -> Void) -> IconCompletionBlock {
+        return { @Sendable (error: NSError?) in
+            let onMain = Thread.isMainThread
+            let errorText = error.map { "\($0.domain) \($0.code): \($0.localizedDescription)" } ?? "nil"
+            IconChangeDiagnostics.log("Icon change: completion fired on main=\(onMain), error=\(errorText)")
+            DispatchQueue.main.async {
+                IconChangeDiagnostics.completion(path: path, error: error)
+                completion(error)
             }
         }
     }

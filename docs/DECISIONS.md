@@ -49,6 +49,17 @@ Originally from the Hermes handover (§5, §6), 2026-11-07 → 11-10. Add new en
   ObjC runtime, guarded, falling back to the public API. `AppIconStore` is optimistic and reverts on
   error. Rejected: testing by really changing the simulator icon — it hung the simulator host; the
   setter is injected in tests.
+- **Icon change crash on iOS 27.2 (build 98 diagnostics, 2026-11-14):** the private call changes the
+  icon, then the app dies with SIGTRAP ~2 s later. Cause: UIKit calls the completion block off the
+  main thread, and the block called `AppIconStore.select`'s closure, which Swift had inferred as
+  main-actor isolated (formed inside a `@MainActor` method, passed as a non-`@Sendable` parameter);
+  the runtime isolation check traps. The "app closes, alert over the Home Screen, relaunch" was this
+  crash, not iOS closing the app. Fix: the setter's completion is `@Sendable` (never isolated); the
+  block is built in a `nonisolated static func`, captures no main-actor state, logs
+  "completion fired on main=…", and hops to `DispatchQueue.main` for everything else. Rule: any
+  closure handed to a system or private API callback must be `@Sendable`/nonisolated and hop to main
+  itself; never `MainActor.assumeIsolated` there. Whether the private API still shows the alert on
+  iOS 27.2 is not yet known (the crash hid it).
 - **Accents:** selection stored by id; old `AccentOption` raw values are the solid ids, so they
   migrate. Labels are black or white at ≥ 4.5:1; per-appearance readable tint ≥ 3:1.
 
