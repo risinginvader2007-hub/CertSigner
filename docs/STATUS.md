@@ -1,16 +1,16 @@
 # CertSigner status
 
 Living document: update it whenever something is verified, shipped or found broken.
-Last updated: **2026-11-13** (handover audit by Claude Code; no code changes since 2026-11-10).
+Last updated: **2026-11-14** (builds 88–96: light-mode glows, in-app updater, Sources fix, update signing fix).
 
 ## Snapshot
 
 | | |
 |---|---|
-| Branches | `main` = `ui-overhaul` = `59dcece` "WebImport tests" (pushed) |
+| Branches | `main` = `5dcf580`; `ui-overhaul` = `3e9ad48` (+ CI-only commit: Signing test runs on `ui-overhaul` pushes only) |
 | Tags | `latest` (moved by CI to each release), `pre-ui-overhaul` = `41316d2` (rollback point, release build 24) |
-| Latest release | "CertSigner (build 87)" from `59dcece`, published 2026-11-10 |
-| CI at `59dcece` | Build IPA run 87 ✅ (app + 8/8 web tests); Signing test run 57 ✅ (25/25 XCTests) |
+| Latest release | "CertSigner (build 96)" from `5dcf580`, published 2026-11-13 (build 95 = same commit) |
+| CI at `5dcf580` | Build IPA runs 95, 96 ✅ (app + web tests); Signing test ✅ (62/62 XCTests, incl. signing the real release IPA with the updater's options + codesign check) |
 | Web installer | https://risinginvader2007-hub.github.io/CertSigner/ — HTTP 200 on 2026-11-13 |
 | Relay | https://get-certsigner.risinginvader2007.workers.dev — HTTP 200 on 2026-11-13 |
 | `api.palera.in/genPlist` | HTTP 200 on 2026-11-13 (Semi-Local available) |
@@ -18,17 +18,23 @@ Last updated: **2026-11-13** (handover audit by Claude Code; no code changes sin
 
 ## Verified
 
-- **CI:** app builds (only the known warnings); 25/25 XCTests; 8/8 web tests (WASM signing of the
+- **CI:** app builds (only the known warnings); 62/62 XCTests (at `5dcf580`); 8/8 web tests (WASM signing of the
   real IPA, relay logic, Playwright e2e in Chromium + WebKit incl. "no request contains the p12,
   password or key").
 - **On the owner's iPhone:** the web page signs and installs CertSigner; earlier builds' signing,
   install (Semi-Local via palera), Sources, deletes and the UI in general; Compatibility mode with
-  Husk.
+  Husk; **in-app update build 95 → 96** (2026-11-14). Builds ≤ 94 can't self-update (read-only
+  `OpenSSL.framework/OpenSSL` made zsign fail; fixed in `80e5e7f`).
 
 ## Implemented, NOT verified on a device
 
 Ask the owner to test these (iPhone test checklist in `docs/FEATURE_INVENTORY.md`):
 
+0. **Builds 90–96** (newest work, checklist items 18, 19, 21 and 20's error paths):
+   - Update sheet's error text, Share Log, certificate picker, retry; Skip This Build; a
+     certificate from another team is refused.
+   - Sources: one row per app, versions newest first (AppTesters used to show duplicates).
+   - Light-mode glows visible and readable; Glow intensity setting; light/dark cross-fade.
 1. **Web certificate hand-off** (build 87): re-sign on the page → Install → "Import Certificate into
    CertSigner" → Open → toast "Imported … Ready to sign". Needs installed app ≥ build 87. This was
    the owner's last bug report ("No certificates yet" after installing from the web).
@@ -44,6 +50,8 @@ Ask the owner to test these (iPhone test checklist in `docs/FEATURE_INVENTORY.md
 
 ## Incomplete
 
+- **Updater:** no rollback copy of the current app before updating; `update.json` is not signed.
+- **Glow intensity** changes apply without animation.
 - **Design audit leftovers:** Settings rows and Home not rebuilt from `ListRow` / `ErrorState`;
   ~14 `.system(size:)` icon fonts and some deliberate colour literals (orange/pink Quick Sign tile);
   no contrast audit; no iPhone SE / Pro Max / iPad layout pass; no FPS measurement.
@@ -59,13 +67,15 @@ Known failing: nothing.
 
 ## Remaining work (priority)
 
-1. On-device confirmation of the build 87 web import.
-2. On-device verification of the install rewrite.
-3. Verify alert-free icon change, accent blends UI and 120 Hz performance.
-4. Decide what to do about backloop.dev's expired certificate (Fully Local / Automatic).
-5. Optional: let CI deploy the Worker (owner adds the secret in GitHub; never via chat).
-6. Finish the design audit leftovers.
-7. Web installer spec gaps (above).
+1. On-device check of builds 90–94 (Sources, light-mode glows, updater error paths).
+2. On-device confirmation of the build 87 web import.
+3. On-device verification of the install rewrite.
+4. Verify alert-free icon change, accent blends UI and 120 Hz performance.
+5. Decide what to do about backloop.dev's expired certificate (Fully Local / Automatic).
+6. Optional: let CI deploy the Worker (owner adds the secret in GitHub; never via chat).
+7. Updater hardening: rollback copy before updating, signed `update.json`.
+8. Finish the design audit leftovers; animate Glow intensity changes.
+9. Web installer spec gaps (above).
 
 ## Build → commit map (published releases from `main`)
 
@@ -90,6 +100,10 @@ Build number = "Build IPA" run number, which also counts branch and web-only run
 | 70 | `b2be2f6` | 11-10 | Accent blends |
 | 84 / 85 | `c16a527` | 11-10 | Web installer, first-launch signature toast |
 | 87 | `59dcece` | 11-10 | Web certificate hand-off (`certsigner://import`) |
+| 90 | `7e747bb` | 11-13 | Light-mode glows, Glow intensity setting |
+| 93 | `fecc71c` | 11-13 | In-app updater (`update.json`, update sheet) |
+| 94 | `e4c2b1c` | 11-13 | Sources: one row per app (duplicates fixed) |
+| 95 / 96 | `5dcf580` | 11-13 | Update signing fix (read-only files made writable); 96 = manual run to test the updater |
 
 Full list: `gh run list -R risinginvader2007-hub/CertSigner -w "Build IPA" -b main`.
 

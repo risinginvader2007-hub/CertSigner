@@ -7,3 +7,5 @@ Payload/
 Support/Info.plist
 
 .wasm-build/
+# Session handoff notes written by the /handoff mod (local only)
+HANDOFF.md
