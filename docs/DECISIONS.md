@@ -74,8 +74,9 @@ Originally from the Hermes handover (§5, §6), 2026-11-07 → 11-10. Add new en
   block is built in a `nonisolated static func`, captures no main-actor state, logs
   "completion fired on main=…", and hops to `DispatchQueue.main` for everything else. Rule: any
   closure handed to a system or private API callback must be `@Sendable`/nonisolated and hop to main
-  itself; never `MainActor.assumeIsolated` there. Whether the private API still shows the alert on
-  iOS 27.2 is not yet known (the crash hid it).
+  itself; never `MainActor.assumeIsolated` there. **Verified on the owner's iPhone (iOS 27.2,
+  2026-11-14):** the icon changes with no crash, but the **system alert still appears** — the
+  private API no longer suppresses it on iOS 27.2. The owner accepts the alert; no further work.
 - **Accents:** selection stored by id; old `AccentOption` raw values are the solid ids, so they
   migrate. Labels are black or white at ≥ 4.5:1; per-appearance readable tint ≥ 3:1.
 

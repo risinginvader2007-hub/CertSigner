@@ -26,7 +26,8 @@ Last updated: **2026-11-14** (builds 88–101; in-app update, Sources and light-
   Husk; **in-app update build 95 → 96** (2026-11-14). Builds ≤ 94 can't self-update (read-only
   `OpenSSL.framework/OpenSSL` made zsign fail; fixed in `80e5e7f`). **Sources** one row per app,
   versions newest first (checklist 21), and **light-mode glows**, Glow intensity, light/dark
-  cross-fade (checklist 18–19), both 2026-11-14.
+  cross-fade (checklist 18–19), both 2026-11-14. **App icon change** without a crash (the system alert
+  still appears on iOS 27.2; accepted) (build 100+, 2026-11-14).
 
 ## Implemented, NOT verified on a device
 
@@ -40,9 +41,6 @@ Ask the owner to test these (iPhone test checklist in `docs/FEATURE_INVENTORY.md
    from the cached check at launch; quiet re-check on launch / foreground (once a minute); skip,
    install and failed-check behaviour. The iOS 26 native tab bar uses an empty `.badge(Text(""))`,
    expected to render as a plain dot — not seen on a device yet.
-0. **App icon change** (build 100, checklist item 3): no crash after the private call (the
-   completion block now hops to main; cause in `docs/DECISIONS.md`); whether iOS 27.2 still shows
-   the alert. Logs "Icon change: completion fired on main=…".
 0. **Updater error cases** (checklist item 20, not yet tested): update sheet's error text,
    Share Log, certificate picker, retry; Skip This Build; a certificate from another team is
    refused.
@@ -52,7 +50,7 @@ Ask the owner to test these (iPhone test checklist in `docs/FEATURE_INVENTORY.md
 2. **Install rewrite:** CapCut, delete + reinstall, install twice, dismiss the prompt (stall UI with
    Reopen Prompt / Try Again), already-installed hints, LaunchServices confirmation (private API
    availability on device unknown).
-3. **App icon change without the system alert** (private API).
+3. ~~App icon change without the system alert~~ — on iOS 27.2 the alert still appears even with the private API (no crash since build 100); accepted by the owner.
 4. **Accent blends** and the custom-blend UI; iOS 26 sheet concentric corners (only seen in a
    simulator screenshot).
 5. **Performance at 120 Hz** on an iPhone 16 Pro Max (Instruments never run — no Mac).
@@ -78,7 +76,7 @@ Known failing: nothing.
 
 ## Remaining work (priority)
 
-1. On-device check of the icon change, the update dot (build 102) and the signing guards (build 103).
+1. On-device check of the update dot (build 102) and the signing guards (build 103).
 1. On-device check of the updater's error cases (checklist item 20).
 2. On-device confirmation of the build 87 web import.
 3. On-device verification of the install rewrite.

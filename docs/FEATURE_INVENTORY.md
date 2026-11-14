@@ -144,7 +144,7 @@ Automated check after stage 6: every Button / Label / Toggle / Picker / sheet / 
 12. Install: CapCut; delete and reinstall; install the same app twice; dismiss the iOS prompt → stall message with Reopen Prompt; already-installed hint; Share Install Log.
 13. Signing modes: Compatibility signs an app with extensions (e.g. Husk) and keeps its bundle ID; Strict blocks on an App ID mismatch. With the explicit profile: Compatibility shows the amber "will share the identity of …" warning and still signs; Strict on another app says to use Compatibility and never pre-fills CertSigner's bundle ID; the signing log lists "Signed identity per bundle".
 14. Library delete → Undo within 5 s restores the app in place.
-15. Settings → Appearance: Blended accents, a custom blend (create, long-press delete), background animation toggle; app icon change shows no system alert.
+15. Settings → Appearance: Blended accents, a custom blend (create, long-press delete), background animation toggle; app icon change. — ✅ no crash on iPhone (iOS 27.2) 2026-11-14; the system alert still appears (accepted).
 16. Storage dashboard: categories, detail screens, Clear Cache / Remove Unused IPAs show "Freed …".
 17. Scrolling and accent changes feel smooth at 120 Hz.
 18. Light mode: background glows clearly visible (default accent and a blend); text on and around them readable; dark mode looks exactly as before. — ✅ verified on iPhone 2026-11-14.
