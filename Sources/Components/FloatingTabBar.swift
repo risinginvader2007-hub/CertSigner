@@ -36,6 +36,8 @@ enum AppTab: String, CaseIterable, Identifiable, Hashable {
 struct FloatingTabBar: View {
     @Binding var selection: AppTab
     var badges: [AppTab: Int] = [:]
+    /// Tabs that show a red dot without a number (when they have no count badge).
+    var dots: Set<AppTab> = []
 
     @Environment(\.themeAccent) private var accent
     @Environment(\.themeGradient) private var gradient
@@ -69,6 +71,7 @@ struct FloatingTabBar: View {
     private func item(_ tab: AppTab) -> some View {
         let selected = tab == selection
         let badge = badges[tab] ?? 0
+        let dot = dots.contains(tab)
         return Button {
             guard tab != selection else { return }
             Haptics.selection()
@@ -91,6 +94,8 @@ struct FloatingTabBar: View {
                             .offset(x: 10, y: -6)
                             .transition(.scale.combined(with: .opacity))
                     }
+                    NotificationDot(visible: badge == 0 && dot)
+                        .offset(x: 3, y: -1)
                 }
                 Text(tab.title)
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -106,7 +111,8 @@ struct FloatingTabBar: View {
             .animation(Theme.bouncy, value: badge)
         }
         .buttonStyle(PressableButtonStyle(scale: 0.92))
-        .accessibilityLabel(badge > 0 ? "\(tab.title), \(badge) need attention" : tab.title)
+        .accessibilityLabel(badge > 0 ? "\(tab.title), \(badge) need attention"
+                            : dot ? "\(tab.title), update available" : tab.title)
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }

@@ -58,6 +58,48 @@ struct AvailableUpdate: Equatable {
     var build: Int { manifest.build }
 }
 
+/// The last successful update check, kept on disk so the red dot can show at launch before any
+/// network call. A failed check never changes it.
+struct UpdateCheckCache: Codable, Equatable {
+    var latestBuild: Int
+    var version: String
+    var checked: Date
+}
+
+/// When the "update available" dot shows (Settings tab, Updates row). Pure, so it is unit-tested.
+enum UpdateDotRules {
+    static func showsDot(cache: UpdateCheckCache?, installedBuild: Int, skippedBuild: Int, installing: Bool) -> Bool {
+        guard let cache, cache.latestBuild > installedBuild else { return false }
+        return cache.latestBuild != skippedBuild && !installing
+    }
+
+    /// The cache after a check: a result replaces it, anything else (failed, in progress) keeps it.
+    static func cache(after state: UpdateService.CheckState, previous: UpdateCheckCache?,
+                      installedBuild: Int, installedVersion: String, now: Date) -> UpdateCheckCache? {
+        switch state {
+        case .available(let update):
+            return UpdateCheckCache(latestBuild: update.build, version: update.manifest.version, checked: now)
+        case .upToDate:
+            return UpdateCheckCache(latestBuild: installedBuild, version: installedVersion, checked: now)
+        case .idle, .checking, .failed:
+            return previous
+        }
+    }
+
+    static func load(from defaults: UserDefaults) -> UpdateCheckCache? {
+        guard let data = defaults.data(forKey: UpdateService.Keys.cache) else { return nil }
+        return try? JSONDecoder().decode(UpdateCheckCache.self, from: data)
+    }
+
+    static func save(_ cache: UpdateCheckCache?, to defaults: UserDefaults) {
+        if let cache, let data = try? JSONEncoder().encode(cache) {
+            defaults.set(data, forKey: UpdateService.Keys.cache)
+        } else {
+            defaults.removeObject(forKey: UpdateService.Keys.cache)
+        }
+    }
+}
+
 enum UpdateError: LocalizedError, Equatable {
     case network(String)
     case invalidRelease(String)
@@ -89,7 +131,8 @@ enum UpdateRules {
     static let assetName = "CertSigner.ipa"
     static let manifestName = "update.json"
     static let maxIPASize: Int64 = 200 * 1024 * 1024
-    static let checkInterval: TimeInterval = 12 * 60 * 60
+    /// Background checks run on launch and on every return to the foreground, at most this often.
+    static let checkInterval: TimeInterval = 60
 
     /// This copy's build number (CFBundleVersion). Builds before the updater all say "1".
     static var installedBuild: Int { build(from: Bundle.main.infoDictionary?["CFBundleVersion"] as? String) }
@@ -283,6 +326,7 @@ final class UpdateService: ObservableObject {
         static let skippedBuild = "updates.skippedBuild"
         static let pendingBuild = "updates.pendingBuild"
         static let etag = "updates.etag"
+        static let cache = "updates.cache"
     }
 
     @Published private(set) var checkState: CheckState = .idle
@@ -292,12 +336,26 @@ final class UpdateService: ObservableObject {
     /// The update sheet (RootView presents it; Home and Settings open it).
     @Published var sheetShown = false
 
-    private let defaults: UserDefaults
-    private var runTask: Task<Void, Never>?
+    /// The last successful check (on disk). Drives the red dot from the first frame after launch.
+    @Published private(set) var cache: UpdateCheckCache?
 
-    init(defaults: UserDefaults = .standard) {
+    private let defaults: UserDefaults
+    private let installedBuild: Int
+    private var runTask: Task<Void, Never>?
+    private var isChecking = false
+
+    init(defaults: UserDefaults = .standard, installedBuild: Int = UpdateRules.installedBuild) {
         self.defaults = defaults
+        self.installedBuild = installedBuild
         skippedBuild = defaults.integer(forKey: Keys.skippedBuild)
+        cache = UpdateDotRules.load(from: defaults)
+    }
+
+    /// The red "update available" dot (Settings tab and Updates row): a newer build in the cache,
+    /// not skipped, and not being installed right now.
+    var showsDot: Bool {
+        UpdateDotRules.showsDot(cache: cache, installedBuild: installedBuild, skippedBuild: skippedBuild,
+                                installing: runState == .installing)
     }
 
     var available: AvailableUpdate? {
@@ -343,18 +401,35 @@ final class UpdateService: ObservableObject {
         return updated
     }
 
-    func checkIfDue() async {
-        guard SettingsKeys.bool(Keys.autoCheck, default: true) else { return }
+    /// Quiet background check on launch and on every return to the foreground, at most once per
+    /// `UpdateRules.checkInterval`, unless automatic checks are turned off in Settings.
+    func checkIfDue(now: Date = Date()) async {
+        guard SettingsKeys.bool(Keys.autoCheck, default: true), !isChecking else { return }
         let last = defaults.double(forKey: Keys.lastCheck)
-        guard Date().timeIntervalSince1970 - last >= UpdateRules.checkInterval else { return }
-        await check()
+        guard now.timeIntervalSince1970 - last >= UpdateRules.checkInterval else { return }
+        defaults.set(now.timeIntervalSince1970, forKey: Keys.lastCheck)
+        await check(quiet: true)
     }
 
     // MARK: Check
 
-    func check() async {
-        guard checkState != .checking else { return }
-        checkState = .checking
+    /// `quiet` (background) keeps the current result on screen while it runs, so the Home card and
+    /// Settings row don't flicker; a failed quiet check keeps a previous result.
+    func check(quiet: Bool = false) async {
+        let hasResult: Bool
+        switch checkState {
+        case .available, .upToDate: hasResult = true
+        default: hasResult = false
+        }
+        if isChecking {
+            // A background check is running: show progress if asked to, its result will land.
+            if !quiet, !hasResult { checkState = .checking }
+            return
+        }
+        isChecking = true
+        defer { isChecking = false }
+        if !quiet || !hasResult { checkState = .checking }
+        let keepOnFailure = quiet && hasResult ? checkState : nil
         do {
             let release = try await fetchRelease()
             guard let manifestAsset = release.assets.first(where: { $0.name == UpdateRules.manifestName }),
@@ -364,26 +439,37 @@ final class UpdateService: ObservableObject {
                 return
             }
             let manifest = try await fetchManifest(manifestAsset.downloadURL)
-            if let update = try UpdateRules.update(release: release, manifest: manifest, installedBuild: UpdateRules.installedBuild) {
+            if let update = try UpdateRules.update(release: release, manifest: manifest, installedBuild: installedBuild) {
                 guard UpdateRules.osSatisfies(manifest.minimumOS) else {
                     finishCheck(.failed("Build \(update.build) needs iOS \(manifest.minimumOS) or later."))
                     return
                 }
                 finishCheck(.available(update))
-                AppLog.info("update: build \(update.build) available (installed \(UpdateRules.installedBuild))")
+                AppLog.info("update: build \(update.build) available (installed \(installedBuild))")
             } else {
                 finishCheck(.upToDate(Date()))
             }
         } catch {
             let message = (error as? UpdateError)?.localizedDescription ?? UpdateError.network(error.localizedDescription).localizedDescription
-            AppLog.error("update: check failed: \(message)")
-            finishCheck(.failed(message))
+            AppLog.error("update: check failed\(quiet ? " (background)" : ""): \(message)")
+            if let keepOnFailure {
+                checkState = keepOnFailure
+            } else {
+                finishCheck(.failed(message))
+            }
         }
     }
 
     private func finishCheck(_ state: CheckState) {
         checkState = state
         defaults.set(Date().timeIntervalSince1970, forKey: Keys.lastCheck)
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        let updated = UpdateDotRules.cache(after: state, previous: cache, installedBuild: installedBuild,
+                                           installedVersion: version, now: Date())
+        if updated != cache {
+            cache = updated
+            UpdateDotRules.save(updated, to: defaults)
+        }
     }
 
     private var cachedReleaseURL: URL { Self.folder.appendingPathComponent("latest-release.json") }

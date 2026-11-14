@@ -451,6 +451,7 @@ struct SettingsView: View {
             } label: {
                 HStack {
                     Label("Updates", systemImage: "arrow.down.app")
+                    NotificationDot(visible: updates.showsDot)
                     Spacer()
                     Text(updateStatus)
                         .foregroundColor(updates.highlighted == nil ? .secondary : accentColor)
@@ -462,6 +463,7 @@ struct SettingsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityValue(updates.showsDot ? "Update available" : "")
             Toggle("Check for updates automatically", isOn: $autoCheckUpdates)
             if let url = URL(string: "https://github.com/risinginvader2007-hub/CertSigner") {
                 Link(destination: url) {

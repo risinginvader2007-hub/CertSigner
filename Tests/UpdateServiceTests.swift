@@ -188,6 +188,72 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertEqual(defaults.integer(forKey: UpdateService.Keys.skippedBuild), 92)
         XCTAssertEqual(UpdateService(defaults: defaults).skippedBuild, 92)
     }
+
+    // MARK: Update dot (cached check result)
+
+    private func freshDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "UpdateServiceTests-\(UUID().uuidString)")!
+    }
+
+    private func cache(_ build: Int) -> UpdateCheckCache {
+        UpdateCheckCache(latestBuild: build, version: "1.0", checked: Date(timeIntervalSince1970: 1_800_000_000))
+    }
+
+    @MainActor
+    func testDotShowsFromCacheAtLaunchWithoutNetwork() {
+        let defaults = freshDefaults()
+        UpdateDotRules.save(cache(101), to: defaults)
+        let service = UpdateService(defaults: defaults, installedBuild: 100)
+        XCTAssertEqual(service.cache, cache(101), "read back from disk")
+        XCTAssertEqual(service.checkState, .idle, "no check has run")
+        XCTAssertTrue(service.showsDot)
+    }
+
+    @MainActor
+    func testDotClearsWhenInstalledBuildReachesCachedLatest() {
+        let defaults = freshDefaults()
+        UpdateDotRules.save(cache(101), to: defaults)
+        XCTAssertFalse(UpdateService(defaults: defaults, installedBuild: 101).showsDot)
+        XCTAssertFalse(UpdateService(defaults: defaults, installedBuild: 102).showsDot)
+        XCTAssertFalse(UpdateService(defaults: freshDefaults(), installedBuild: 100).showsDot, "no cache, no dot")
+    }
+
+    @MainActor
+    func testSkippedBuildHidesDotUntilANewerBuild() {
+        let defaults = freshDefaults()
+        UpdateDotRules.save(cache(101), to: defaults)
+        let service = UpdateService(defaults: defaults, installedBuild: 100)
+        service.skip(AvailableUpdate(manifest: manifest(build: 101), ipaURL: URL(string: "https://github.com/x")!, pageURL: nil))
+        XCTAssertFalse(service.showsDot)
+        XCTAssertFalse(UpdateService(defaults: defaults, installedBuild: 100).showsDot, "skip survives a relaunch")
+        UpdateDotRules.save(cache(102), to: defaults)
+        XCTAssertTrue(UpdateService(defaults: defaults, installedBuild: 100).showsDot, "a newer build shows it again")
+    }
+
+    func testDotHiddenWhileInstalling() {
+        XCTAssertTrue(UpdateDotRules.showsDot(cache: cache(101), installedBuild: 100, skippedBuild: 0, installing: false))
+        XCTAssertFalse(UpdateDotRules.showsDot(cache: cache(101), installedBuild: 100, skippedBuild: 0, installing: true))
+    }
+
+    @MainActor
+    func testFailedCheckKeepsCachedStateAndResultsReplaceIt() {
+        let old = cache(101)
+        let now = Date(timeIntervalSince1970: 1_900_000_000)
+        func after(_ state: UpdateService.CheckState) -> UpdateCheckCache? {
+            UpdateDotRules.cache(after: state, previous: old, installedBuild: 100, installedVersion: "1.0", now: now)
+        }
+        XCTAssertEqual(after(.failed("GitHub answered 500.")), old, "a failed check keeps the old state")
+        XCTAssertEqual(after(.checking), old)
+        XCTAssertNil(UpdateDotRules.cache(after: .failed("offline"), previous: nil, installedBuild: 100,
+                                            installedVersion: "1.0", now: now), "and never creates a dot")
+
+        let newer = AvailableUpdate(manifest: manifest(build: 105), ipaURL: URL(string: "https://github.com/x")!, pageURL: nil)
+        XCTAssertEqual(after(.available(newer)), UpdateCheckCache(latestBuild: 105, version: "1.0", checked: now))
+
+        let upToDate = after(.upToDate(now))
+        XCTAssertEqual(upToDate?.latestBuild, 100, "no newer build: the feed's answer removes the dot")
+        XCTAssertFalse(UpdateDotRules.showsDot(cache: upToDate, installedBuild: 100, skippedBuild: 0, installing: false))
+    }
 }
 
 private extension ReleaseManifest {

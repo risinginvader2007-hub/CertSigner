@@ -42,7 +42,11 @@ struct RootView: View {
             .environment(\.themeOnAccent, theme.onAccent)
             .environmentObject(theme)
             .onChange(of: accent) { newValue in theme.apply(Accent.resolve(id: newValue)) }
-            .onChange(of: scenePhase) { phase in AuroraClock.shared.setRunning(phase == .active) }
+            .onChange(of: scenePhase) { phase in
+                AuroraClock.shared.setRunning(phase == .active)
+                // Back in the foreground: quiet update check (throttled to once a minute).
+                if phase == .active { Task { await updates.checkIfDue() } }
+            }
             .preferredColorScheme(appearance.colorScheme)
             .roundedDesign()
             .modifier(ToastHost(center: toasts))
@@ -169,7 +173,8 @@ private struct NativeTabShell: View {
             Tab(AppTab.settings.title, systemImage: AppTab.settings.systemImage, value: AppTab.settings) {
                 tabScreen(.settings).environment(\.auroraActive, router.tab == .settings)
             }
-            .badge(updates.highlighted == nil ? 0 : 1)
+            // An empty badge: UIKit draws it as a small red dot with no number.
+            .badge(updates.showsDot ? Text("") : nil)
             Tab(value: AppTab.search, role: .search) {
                 tabScreen(.search)
             }
@@ -202,8 +207,8 @@ private struct LegacyTabShell: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if !keyboardVisible {
-                FloatingTabBar(selection: $router.tab, badges: [.library: signedApps.attentionCount,
-                                                                 .settings: updates.highlighted == nil ? 0 : 1])
+                FloatingTabBar(selection: $router.tab, badges: [.library: signedApps.attentionCount],
+                               dots: updates.showsDot ? [.settings] : [])
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }

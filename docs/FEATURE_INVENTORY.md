@@ -102,7 +102,8 @@ tested on a device is tracked in [`STATUS.md`](STATUS.md).
 - [x] Diagnostics: Export Log File (ShareLink, preparing state), Clear Log
 - [x] About: version, Updates row (status → update sheet), Check for updates automatically, Source on GitHub link
 - [x] Update sheet: build, size, date, What's new, Signs with (certificate, team, expiry, bundle ID kept), checks, Update / Skip This Build; Download → Verify → Sign → Install progress, Reopen Prompt, Try Again, Cancel
-- [x] Home card "CertSigner build N is available" and a Settings tab badge (hidden for a skipped build); "Updated to build N" toast after the update
+- [x] Home card "CertSigner build N is available"; "Updated to build N" toast after the update
+- [x] Update dot: small red dot (no number) on the Settings tab and next to the Updates row, shown at launch from the cached last check (no network wait); quiet re-check on launch and each return to the foreground (at most once a minute, off when "Check for updates automatically" is off); hidden for a skipped build, while installing, and once the installed build catches up; a failed check keeps the cached state; pop-in (fade only with Reduce Motion)
 - [x] Pull to refresh
 
 ## Web installer (`web/`, `worker/`)
@@ -145,6 +146,7 @@ Automated check after stage 6: every Button / Label / Toggle / Picker / sheet / 
 17. Scrolling and accent changes feel smooth at 120 Hz.
 18. Light mode: background glows clearly visible (default accent and a blend); text on and around them readable; dark mode looks exactly as before. — ✅ verified on iPhone 2026-11-14.
 20. In-app update (needs an installed build that has the updater and a newer release): Home card / Settings → Updates → sheet shows notes, certificate, all checks green → Update → download, verify, sign → iOS prompt → Install → CertSigner closes → open it → "Updated to build N"; certificates, signed apps and settings still there. — ✅ verified on iPhone 2026-11-14 (build 95 → 96). Also: Skip This Build hides the card; a certificate from another team is refused with a clear message; Share Log on a failed update. — not yet tested.
+22. Update dot (needs a newer release than the installed build): open the app → red dot on the Settings tab and next to Settings → Updates right away (also in Airplane Mode once a check has run); no number. Skip This Build → dot gone; it returns for a newer build. Update → dot disappears while installing and stays gone on the new build. Light/dark, a few accents, Reduce Motion (fade instead of pop). iOS 26: the native tab bar's dot.
 21. Sources: search "Instag" (AppTesters) → one Instagram row per source with "N versions"; the detail lists every version newest first (454.0.0 on top, "Latest"), each with its own GET. Same in All Apps, each source's list and the Search tab; scrolling a big source stays smooth. — ✅ verified on iPhone 2026-11-14.
 19. Switch Light ↔ Dark in Settings and from Control Center: the glows fade over with no flash. Glow intensity Low / Normal / High changes the glows, and each appearance remembers its own choice. — ✅ verified on iPhone 2026-11-14.
 
