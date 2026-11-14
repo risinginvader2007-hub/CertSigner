@@ -34,4 +34,13 @@ final class AppIconStoreTests: XCTestCase {
         let privateAPI = UIApplication.shared.responds(to: NSSelectorFromString("_setAlternateIconName:completionHandler:"))
         print("private _setAlternateIconName available: \(privateAPI)")
     }
+
+    /// How a run that died during an icon change is classified from its marker.
+    func testIconChangeVerdict() {
+        let header = "icon change to AppIcon-Mint at 2026-11-14T10:00:00Z on iOS 18.1\n"
+        XCTAssertTrue(IconChangeDiagnostics.verdict(for: header + "event +0.10 s: willResignActive\nevent: crash signal 05\n").hasPrefix("CRASHED"))
+        XCTAssertTrue(IconChangeDiagnostics.verdict(for: header + "event +0.30 s: didEnterBackground\nevent +0.31 s: willTerminate\n").hasPrefix("TERMINATED"))
+        XCTAssertTrue(IconChangeDiagnostics.verdict(for: header + "event +0.10 s: willResignActive\nevent +0.30 s: didEnterBackground\n").hasPrefix("KILLED WITHOUT NOTICE"))
+        XCTAssertTrue(IconChangeDiagnostics.verdict(for: header).hasPrefix("ENDED WITHOUT"))
+    }
 }

@@ -61,14 +61,25 @@ final class AppIconStore: ObservableObject {
         DispatchQueue.main.async {
             let application = UIApplication.shared
             let selector = NSSelectorFromString("_setAlternateIconName:completionHandler:")
-            if application.responds(to: selector) {
+            let privateAvailable = application.responds(to: selector)
+            IconChangeDiagnostics.begin(name: name, privateAvailable: privateAvailable)
+            if privateAvailable {
                 typealias Completion = @convention(block) (NSError?) -> Void
                 typealias Method = @convention(c) (NSObject, Selector, NSString?, Completion) -> Void
                 let implementation = application.method(for: selector)
                 let call = unsafeBitCast(implementation, to: Method.self)
-                call(application, selector, name as NSString?, { error in completion(error) })
+                IconChangeDiagnostics.log("Icon change: calling private _setAlternateIconName:completionHandler: with \(name ?? "nil")")
+                call(application, selector, name as NSString?, { error in
+                    IconChangeDiagnostics.completion(path: "private", error: error)
+                    completion(error)
+                })
+                IconChangeDiagnostics.log("Icon change: private call returned")
             } else {
-                application.setAlternateIconName(name, completionHandler: completion)
+                IconChangeDiagnostics.log("Icon change: FALLBACK to public setAlternateIconName (private method missing); iOS will show its alert")
+                application.setAlternateIconName(name) { error in
+                    IconChangeDiagnostics.completion(path: "public", error: error)
+                    completion(error)
+                }
             }
         }
     }

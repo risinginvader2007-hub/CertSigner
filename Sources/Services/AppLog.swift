@@ -15,23 +15,35 @@ enum AppLog {
     static func info(_ message: String) { write("INFO", message) }
     static func error(_ message: String) { write("ERROR", message) }
 
+    /// Writes before returning, for lines that must survive the process being killed right after.
+    static func infoNow(_ message: String) {
+        let line = format("INFO", message)
+        queue.sync { append(line) }
+    }
+
+    private static func format(_ level: String, _ message: String) -> String {
+        "\(ISO8601DateFormatter().string(from: Date())) [\(level)] \(message)\n"
+    }
+
     private static func write(_ level: String, _ message: String) {
-        let stamp = ISO8601DateFormatter().string(from: Date())
-        let line = "\(stamp) [\(level)] \(message)\n"
-        queue.async {
-            let url = fileURL
-            let fm = FileManager.default
-            if let size = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? NSNumber, size.intValue > maxBytes {
-                try? fm.removeItem(at: url) // keep the log small
-            }
-            if !fm.fileExists(atPath: url.path) {
-                fm.createFile(atPath: url.path, contents: nil)
-            }
-            if let handle = try? FileHandle(forWritingTo: url) {
-                handle.seekToEndOfFile()
-                handle.write(Data(line.utf8))
-                try? handle.close()
-            }
+        let line = format(level, message)
+        queue.async { append(line) }
+    }
+
+    /// Runs on `queue`.
+    private static func append(_ line: String) {
+        let url = fileURL
+        let fm = FileManager.default
+        if let size = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? NSNumber, size.intValue > maxBytes {
+            try? fm.removeItem(at: url) // keep the log small
+        }
+        if !fm.fileExists(atPath: url.path) {
+            fm.createFile(atPath: url.path, contents: nil)
+        }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
         }
     }
 

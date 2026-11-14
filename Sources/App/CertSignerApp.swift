@@ -25,6 +25,7 @@ struct CertSignerApp: App {
             certificates: certificates, library: library, signedApps: signedApps, toasts: toasts
         ))
         AppLog.info("CertSigner launched")
+        IconChangeDiagnostics.reportPreviousRun()
     }
 
     var body: some Scene {
