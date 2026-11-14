@@ -22,6 +22,10 @@ Originally from the Hermes handover (§5, §6), 2026-11-07 → 11-10. Add new en
   Deferred until the owner has a wildcard or matching profile: per-bundle entitlements
   (`TEAMID.<bundle ID>`, app's own groups filtered by the profile) — a single explicit profile can't
   give other apps a valid identity of their own, so it would not help with explicit-only profiles.
+- **Conclusion (2026-11-14):** Dynamic Island/Now Playing opening CertSigner is caused by sideloaded
+  apps sharing the profile's explicit App ID; fix needs a second profile with a different App ID or
+  a wildcard; not a CertSigner code bug. (The owner's FlareStore dev and dist profiles both use
+  `A2V52T4RD8.app.serval455.apricot580`; the per-bundle entitlements fix is dropped for now.)
 - The app reads the App ID from `Entitlements["application-identifier"]`, never `Name` /
   `AppIDName` (confirmed with the "Raw Profile Data" screen, build 42).
 
