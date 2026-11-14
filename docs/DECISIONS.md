@@ -104,6 +104,9 @@ Originally from the Hermes handover (§5, §6), 2026-11-07 → 11-10. Add new en
   was blocked by Turnstile; no API token was created, so CI can't redeploy the Worker.
 
 ## Pitfalls (don't repeat)
+- **No empty tab badges on the system tab bar** (build 102 → owner saw no dot on iOS 27): `.badge(Text(""))`
+  is not guaranteed to draw anything on the iOS 26+ tab bar. Use a count badge (`.badge(1)`), the same
+  API as the Library count; the custom iOS 16–25 bar draws its own dot.
 - **The update sheet must never be blank** (build 102 bug): it showed a faint `LoadingSkeleton` while
   a background check ran, and its own check returned at once when one was already running, so it
   could stay on that near-invisible placeholder (no Update button). Now one check runs at a time in

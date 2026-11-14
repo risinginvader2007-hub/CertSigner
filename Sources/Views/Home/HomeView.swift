@@ -37,8 +37,10 @@ struct HomeView: View {
                         attentionBanner
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
-                    if let update = updates.highlighted {
-                        updateCard(update)
+                    // Same condition as the red dot, so it shows from the saved check at launch too
+                    // (the notes line fills in once the release details are loaded).
+                    if let build = updates.dotBuild {
+                        updateCard(build: build, note: updates.highlighted?.manifest.notes.first)
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
                     if let transfer = library.transfer {
@@ -56,7 +58,7 @@ struct HomeView: View {
                 .padding(Theme.padding)
                 .animation(Theme.spring, value: library.transfer)
                 .animation(Theme.spring, value: attentionApps)
-                .animation(Theme.spring, value: updates.highlighted?.build)
+                .animation(Theme.spring, value: updates.dotBuild)
             }
             .background(AmbientBackground())
             .refreshable { await refreshHome() }
@@ -117,7 +119,7 @@ struct HomeView: View {
 
     // MARK: Update
 
-    private func updateCard(_ update: AvailableUpdate) -> some View {
+    private func updateCard(build: Int, note: String?) -> some View {
         Button {
             Haptics.impact(.light)
             updates.sheetShown = true
@@ -125,10 +127,10 @@ struct HomeView: View {
             HStack(spacing: Space.x4) {
                 IconTile(systemImage: "arrow.down.app.fill", color: accent, size: 44)
                 VStack(alignment: .leading, spacing: Space.hair) {
-                    Text("CertSigner build \(update.build) is available")
+                    Text("CertSigner build \(build) is available")
                         .font(.headline)
                         .foregroundColor(.primary)
-                    Text(update.manifest.notes.first ?? "Update from here with your own certificate.")
+                    Text(note ?? "Update from here with your own certificate.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                         .lineLimit(2)

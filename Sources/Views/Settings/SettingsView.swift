@@ -32,8 +32,8 @@ struct SettingsView: View {
 
     private var updateStatus: String {
         switch updates.checkState {
-        case .idle: return "Check Now"
-        case .checking: return "Checking…"
+        case .idle: return updates.dotBuild.map { "Build \($0) available" } ?? "Check Now"
+        case .checking: return updates.dotBuild.map { "Build \($0) available" } ?? "Checking…"
         case .upToDate: return "Up to date"
         case .available(let update): return "Build \(update.build) available"
         case .failed: return "Couldn't check"
@@ -454,7 +454,7 @@ struct SettingsView: View {
                     NotificationDot(visible: updates.showsDot)
                     Spacer()
                     Text(updateStatus)
-                        .foregroundColor(updates.highlighted == nil ? .secondary : accentColor)
+                        .foregroundColor(updates.showsDot ? accentColor : .secondary)
                         .lineLimit(1)
                     Image(systemName: "chevron.right")
                         .font(.footnote.weight(.semibold))

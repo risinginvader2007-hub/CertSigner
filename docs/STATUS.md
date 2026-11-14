@@ -7,10 +7,10 @@ Last updated: **2026-11-14** (builds 88–101; in-app update, Sources and light-
 
 | | |
 |---|---|
-| Branches | `main` = `2599c66` (build 104); `ui-overhaul` = `main` + update sheet fix (branch build 105, not released) |
+| Branches | `main` = `d56ec1b` (build 107); `ui-overhaul` = `main` + update indicator fix (branch build 108, not released) |
 | Tags | `latest` (moved by CI to each release), `pre-ui-overhaul` = `41316d2` (rollback point, release build 24) |
-| Latest release | "CertSigner (build 104)" from `2599c66`, published 2026-11-14 (app code = branch build 103) |
-| CI at `2599c66` | Build IPA runs 103, 104 ✅; Signing test run 76 ✅ (76/76 XCTests) |
+| Latest release | "CertSigner (build 107)" from `d56ec1b`, published 2026-11-14 (empty commit; app code = build 106) |
+| CI at `35da71d` | Build IPA runs 105, 106, 107 ✅; Signing test run 77 ✅ (78/78 XCTests) |
 | Web installer | https://risinginvader2007-hub.github.io/CertSigner/ — HTTP 200 on 2026-11-13 |
 | Relay | https://get-certsigner.risinginvader2007.workers.dev — HTTP 200 on 2026-11-13 |
 | `api.palera.in/genPlist` | HTTP 200 on 2026-11-13 (Semi-Local available) |
@@ -33,7 +33,10 @@ Last updated: **2026-11-14** (builds 88–101; in-app update, Sources and light-
 
 Ask the owner to test these (iPhone test checklist in `docs/FEATURE_INVENTORY.md`):
 
-0. **Update sheet never blank** (branch build 105): opened from the red dot with only the saved
+0. **Update indicator** (branch build 108, checklist item 22): the owner saw no dot on build 106. Now
+   the iOS 26+ Settings tab uses a count badge "1" (an empty badge may not be drawn); the Home card
+   and Updates row follow the same saved-check state at launch; "update dot: …" log lines.
+0. **Update sheet never blank** (released in build 106): opened from the red dot with only the saved
    check, during or after a background check — must show loading, the details, an error with Try
    Again + Share Log, or "up to date". The log has "update: sheet opened (…)" and "update: check started (…)".
 0. **Signing identity guards** (released in build 104, checklist item 13): Compatibility warning for a
@@ -121,6 +124,8 @@ Build number = "Build IPA" run number, which also counts branch and web-only run
 | 100 | `8fe2b35` | 11-14 | Icon change: nonisolated completion block (crash fix; = branch build 99) |
 | 102 | `9e0446d` | 11-14 | Update dot (Settings tab + Updates row) |
 | 104 | `2599c66` | 11-14 | Signing identity guards (Strict self-ID refusal, shared-identity warning, per-bundle log) |
+| 106 | `35da71d` | 11-14 | Update sheet never blank |
+| 107 | `d56ec1b` | 11-14 | Same code as 106 (empty release commit) |
 
 Full list: `gh run list -R risinginvader2007-hub/CertSigner -w "Build IPA" -b main`.
 

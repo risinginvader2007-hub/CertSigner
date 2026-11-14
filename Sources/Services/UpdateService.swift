@@ -86,6 +86,12 @@ enum UpdateDotRules {
         }
     }
 
+    /// "update dot: show=true installed=102 savedLatest=104 skipped=none installing=false source=cache"
+    static func logLine(show: Bool, installedBuild: Int, savedLatest: Int?, skippedBuild: Int, installing: Bool, source: String) -> String {
+        "update dot: show=\(show) installed=\(installedBuild) savedLatest=\(savedLatest.map { String($0) } ?? "none") "
+            + "skipped=\(skippedBuild > 0 ? String(skippedBuild) : "none") installing=\(installing) source=\(source)"
+    }
+
     static func load(from defaults: UserDefaults) -> UpdateCheckCache? {
         guard let data = defaults.data(forKey: UpdateService.Keys.cache) else { return nil }
         return try? JSONDecoder().decode(UpdateCheckCache.self, from: data)
@@ -330,7 +336,11 @@ final class UpdateService: ObservableObject {
     }
 
     @Published private(set) var checkState: CheckState = .idle
-    @Published private(set) var runState: RunState = .idle
+    @Published private(set) var runState: RunState = .idle {
+        didSet {
+            if (oldValue == .installing) != (runState == .installing) { logDot(source: "install") }
+        }
+    }
     @Published private(set) var log: [LogLine] = []
     @Published private(set) var skippedBuild: Int
     /// The update sheet (RootView presents it; Home and Settings open it).
@@ -354,6 +364,16 @@ final class UpdateService: ObservableObject {
 
     /// The red "update available" dot (Settings tab and Updates row): a newer build in the cache,
     /// not skipped, and not being installed right now.
+    /// The build the dot (and the Home card) point at, from the saved check; nil = no dot.
+    var dotBuild: Int? { showsDot ? cache?.latestBuild : nil }
+
+    /// Logs the dot state and its inputs. Called whenever one of them changes: at launch (saved
+    /// check), after each check, on skip, and when an install starts or ends.
+    func logDot(source: String) {
+        AppLog.info(UpdateDotRules.logLine(show: showsDot, installedBuild: installedBuild, savedLatest: cache?.latestBuild,
+                                           skippedBuild: skippedBuild, installing: runState == .installing, source: source))
+    }
+
     var showsDot: Bool {
         UpdateDotRules.showsDot(cache: cache, installedBuild: installedBuild, skippedBuild: skippedBuild,
                                 installing: runState == .installing)
@@ -422,6 +442,7 @@ final class UpdateService: ObservableObject {
     /// Returns true when it showed "Updated to build N".
     @discardableResult
     func launch(toasts: ToastCenter) -> Bool {
+        logDot(source: "cache")
         let pending = defaults.integer(forKey: Keys.pendingBuild)
         let installed = UpdateRules.installedBuild
         var updated = false
@@ -507,6 +528,7 @@ final class UpdateService: ObservableObject {
             } else {
                 finishCheck(.failed(message))
             }
+            logDot(source: "check failed (saved check kept)")
         }
     }
 
@@ -520,6 +542,7 @@ final class UpdateService: ObservableObject {
             cache = updated
             UpdateDotRules.save(updated, to: defaults)
         }
+        if case .failed = state {} else { logDot(source: "check") }
     }
 
     private var cachedReleaseURL: URL { Self.folder.appendingPathComponent("latest-release.json") }
@@ -576,6 +599,7 @@ final class UpdateService: ObservableObject {
     func skip(_ update: AvailableUpdate) {
         skippedBuild = update.build
         defaults.set(update.build, forKey: Keys.skippedBuild)
+        logDot(source: "skip")
     }
 
     // MARK: Plan

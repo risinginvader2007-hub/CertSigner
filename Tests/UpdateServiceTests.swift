@@ -255,6 +255,31 @@ final class UpdateServiceTests: XCTestCase {
         XCTAssertFalse(UpdateDotRules.showsDot(cache: upToDate, installedBuild: 100, skippedBuild: 0, installing: false))
     }
 
+    // MARK: Dot state at launch (build 106 report: no dot seen)
+
+    /// Installed build older than the saved latest, no skip, not installing: the dot (and the Home
+    /// card / Updates row, which use the same state) must be on from the saved check alone.
+    @MainActor
+    func testDotIsOnFromSavedCheckWhenInstalledIsOlder() {
+        let defaults = freshDefaults()
+        UpdateDotRules.save(cache(107), to: defaults)
+        let service = UpdateService(defaults: defaults, installedBuild: 106)
+        XCTAssertEqual(service.checkState, .idle, "before any network call")
+        XCTAssertTrue(service.showsDot)
+        XCTAssertEqual(service.dotBuild, 107, "the Home card and Updates row show build 107")
+        XCTAssertEqual(service.skippedBuild, 0)
+        XCTAssertEqual(service.runState, .idle)
+    }
+
+    func testDotLogLine() {
+        XCTAssertEqual(UpdateDotRules.logLine(show: true, installedBuild: 106, savedLatest: 107, skippedBuild: 0,
+                                              installing: false, source: "cache"),
+                       "update dot: show=true installed=106 savedLatest=107 skipped=none installing=false source=cache")
+        XCTAssertEqual(UpdateDotRules.logLine(show: false, installedBuild: 106, savedLatest: nil, skippedBuild: 107,
+                                              installing: true, source: "check"),
+                       "update dot: show=false installed=106 savedLatest=none skipped=107 installing=true source=check")
+    }
+
     // MARK: Update sheet content (never blank)
 
     /// Build 102 bug: the sheet opened with only a title and Close. Every state must show something:

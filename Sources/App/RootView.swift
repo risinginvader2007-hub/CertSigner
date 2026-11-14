@@ -173,8 +173,10 @@ private struct NativeTabShell: View {
             Tab(AppTab.settings.title, systemImage: AppTab.settings.systemImage, value: AppTab.settings) {
                 tabScreen(.settings).environment(\.auroraActive, router.tab == .settings)
             }
-            // An empty badge: UIKit draws it as a small red dot with no number.
-            .badge(updates.showsDot ? Text("") : nil)
+            // The system tab bar (iOS 26+) can't take a custom view, and an empty badge isn't
+            // guaranteed to be drawn (build 102: no dot seen). A count badge is the one form every
+            // iOS version draws — the same API as the Library tab's count.
+            .badge(updates.showsDot ? 1 : 0)
             Tab(value: AppTab.search, role: .search) {
                 tabScreen(.search)
             }
