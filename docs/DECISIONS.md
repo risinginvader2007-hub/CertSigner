@@ -10,6 +10,18 @@ Originally from the Hermes handover (§5, §6), 2026-11-07 → 11-10. Add new en
   zsign, keeps and signs every appex, framework and dylib, and skips App-ID mismatch checks. Verified
   on device by the owner: Husk (`com.husk.app`, two extensions) installs and works this way,
   matching FlareStore. **Strict** keeps the original behaviour (rewrite bundle ID, block on mismatch).
+- **Entitlements come from the profile, unchanged, for every executable** (zsign without an
+  entitlements file; `archo.cpp` uses one blob for the app and each appex). With an explicit
+  profile for another App ID, every signed app and extension gets that App ID as
+  `application-identifier` and the profile's App Groups / keychain groups — it shares that app's
+  identity (Keychain, App Groups, system UI such as the Dynamic Island's Now Playing tap, which
+  opened CertSigner because the web installer gives CertSigner the profile's App ID as its bundle
+  ID). Build 103: Compatibility shows a **non-blocking** warning for this; Strict refuses
+  CertSigner's own bundle ID (app and pipeline) and `suggestedBundleID` no longer proposes it for
+  other apps; the signing log reads each bundle's real entitlements back from its signature.
+  Deferred until the owner has a wildcard or matching profile: per-bundle entitlements
+  (`TEAMID.<bundle ID>`, app's own groups filtered by the profile) — a single explicit profile can't
+  give other apps a valid identity of their own, so it would not help with explicit-only profiles.
 - The app reads the App ID from `Entitlements["application-identifier"]`, never `Name` /
   `AppIDName` (confirmed with the "Raw Profile Data" screen, build 42).
 

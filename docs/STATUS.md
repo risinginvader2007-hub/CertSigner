@@ -7,10 +7,10 @@ Last updated: **2026-11-14** (builds 88–101; in-app update, Sources and light-
 
 | | |
 |---|---|
-| Branches | `main` = `8fe2b35` (build 100); `ui-overhaul` = `main` + the update dot (branch build 101, not released) |
+| Branches | `main` = `9e0446d` (build 102); `ui-overhaul` = `main` + signing identity guards (branch build 103, not released) |
 | Tags | `latest` (moved by CI to each release), `pre-ui-overhaul` = `41316d2` (rollback point, release build 24) |
-| Latest release | "CertSigner (build 100)" from `8fe2b35`, published 2026-11-14 (same code as branch build 99) |
-| CI at `8fe2b35` | Build IPA runs 99, 100 ✅ (app + web tests); Signing test run 74 ✅ (65/65 XCTests) |
+| Latest release | "CertSigner (build 102)" from `9e0446d`, published 2026-11-14 (same code as branch build 101) |
+| CI at `9e0446d` | Build IPA runs 101, 102 ✅; Signing test run 75 ✅ (70/70 XCTests) |
 | Web installer | https://risinginvader2007-hub.github.io/CertSigner/ — HTTP 200 on 2026-11-13 |
 | Relay | https://get-certsigner.risinginvader2007.workers.dev — HTTP 200 on 2026-11-13 |
 | `api.palera.in/genPlist` | HTTP 200 on 2026-11-13 (Semi-Local available) |
@@ -32,7 +32,11 @@ Last updated: **2026-11-14** (builds 88–101; in-app update, Sources and light-
 
 Ask the owner to test these (iPhone test checklist in `docs/FEATURE_INVENTORY.md`):
 
-0. **Update dot** (branch build 101, checklist item 22): red dot on the Settings tab and Updates row
+0. **Signing identity guards** (branch build 103, checklist item 13): Compatibility warning for a
+   shared App ID, Strict refusal of CertSigner's own bundle ID, per-bundle identity in the log.
+   Known issue, not fixed: every app signed with an explicit profile shares that App ID
+   (`docs/DECISIONS.md`); Keychain items (p12 passwords) are readable by such apps.
+0. **Update dot** (released in build 102, checklist item 22): red dot on the Settings tab and Updates row
    from the cached check at launch; quiet re-check on launch / foreground (once a minute); skip,
    install and failed-check behaviour. The iOS 26 native tab bar uses an empty `.badge(Text(""))`,
    expected to render as a plain dot — not seen on a device yet.
@@ -74,7 +78,7 @@ Known failing: nothing.
 
 ## Remaining work (priority)
 
-1. On-device check of the icon change (build 100) and the update dot (build 101), then release 101.
+1. On-device check of the icon change, the update dot (build 102) and the signing guards (build 103).
 1. On-device check of the updater's error cases (checklist item 20).
 2. On-device confirmation of the build 87 web import.
 3. On-device verification of the install rewrite.
@@ -114,6 +118,7 @@ Build number = "Build IPA" run number, which also counts branch and web-only run
 | 95 / 96 | `5dcf580` | 11-13 | Update signing fix (read-only files made writable); 96 = manual run to test the updater |
 | 98 | `dde6b8d` | 11-14 | Icon-change diagnostics (found the SIGTRAP after the private call) |
 | 100 | `8fe2b35` | 11-14 | Icon change: nonisolated completion block (crash fix; = branch build 99) |
+| 102 | `9e0446d` | 11-14 | Update dot (Settings tab + Updates row) |
 
 Full list: `gh run list -R risinginvader2007-hub/CertSigner -w "Build IPA" -b main`.
 

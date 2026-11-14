@@ -72,6 +72,7 @@ struct SignAppSheet: View {
     }
 
     private var errors: [SigningIssue] { issues.filter { $0.severity == .error } }
+    private var warnings: [SigningIssue] { issues.filter { $0.severity == .warning } }
     private var hasErrors: Bool { !errors.isEmpty }
 
     var body: some View {
@@ -87,6 +88,7 @@ struct SignAppSheet: View {
                         certificateSection
                         checksSection
                         optionsSection
+                        if !warnings.isEmpty { issueList(warnings, icon: "exclamationmark.triangle.fill", color: Theme.warning) }
                         if !errors.isEmpty { errorsSection }
                         afterSigningSection
                         PrimaryButton(title: hasErrors ? "Fix the issues above" : "Sign", systemImage: "signature") { start() }
@@ -421,11 +423,16 @@ struct SignAppSheet: View {
     }
 
     private var errorsSection: some View {
+        issueList(errors, icon: "xmark.octagon.fill", color: Theme.danger)
+    }
+
+    /// Non-blocking warnings and blocking errors share one look; only the icon and colour differ.
+    private func issueList(_ list: [SigningIssue], icon: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: Space.x3) {
-            ForEach(errors) { issue in
+            ForEach(list) { issue in
                 HStack(alignment: .top, spacing: Space.x3) {
-                    Image(systemName: "xmark.octagon.fill")
-                        .foregroundColor(Theme.danger)
+                    Image(systemName: icon)
+                        .foregroundColor(color)
                     Text(issue.message)
                         .font(.footnote)
                         .fixedSize(horizontal: false, vertical: true)
@@ -437,7 +444,7 @@ struct SignAppSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: Theme.corner, style: .continuous)
-                .fill(Theme.danger.opacity(0.1))
+                .fill(color.opacity(0.1))
         )
     }
 

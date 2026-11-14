@@ -145,6 +145,11 @@ enum SigningWorker {
             options.removeExtensions = false
         }
         log("Signing mode: \(mode.title)")
+        let originalID = (try? AppBundlePatcher.readPlist(appURL.appendingPathComponent("Info.plist")))?.0["CFBundleIdentifier"] as? String ?? ""
+        let ownID = Bundle.main.bundleIdentifier ?? ""
+        if SigningValidator.wouldReplaceCertSigner(bundleID: options.trimmedBundleID, originalBundleID: originalID, ownBundleID: ownID) {
+            throw SigningError.sign("\(options.trimmedBundleID) is CertSigner's own bundle ID: installing this app would replace CertSigner. Use Compatibility mode, or give the app a bundle ID of its own.")
+        }
         let summary = try AppBundlePatcher.apply(options, to: appURL) { log($0) }
         if mode == .strict {
             let nested = AppBundlePatcher.nestedBundleIDs(in: appURL)
@@ -211,6 +216,9 @@ enum SigningWorker {
         }
         log("Signed \(items.count) item\(items.count == 1 ? "" : "s"):")
         for item in items { log("  ✓ \(item.description)") }
+        // What each bundle was actually signed as, read back from its executable's signature.
+        log("Signed identity per bundle:")
+        for line in SignedIdentity.summaryLines(appURL: appURL) { log("  \(line)") }
         throttle.report(0.85)
 
         // 4. Packaging (85 – 100%)

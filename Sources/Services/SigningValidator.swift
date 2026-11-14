@@ -29,7 +29,8 @@ enum SigningValidator {
         removeExtensions: Bool,
         udid: String,
         mode: SigningMode = .strict,
-        now: Date = Date()
+        now: Date = Date(),
+        ownBundleID: String = Bundle.main.bundleIdentifier ?? ""
     ) -> [PreSignCheck] {
         guard let certificate, let profile = certificate.profile else {
             return [PreSignCheck(id: "cert", title: "Certificate", detail: "No usable certificate selected.", state: .fail)]
@@ -63,8 +64,10 @@ enum SigningValidator {
             appendDeviceCheck(to: &result, profile: profile, udid: udid)
             return result
         }
-        var bundleOK = isValidBundleID(bundleID) && self.bundleID(bundleID, matches: pattern)
-        var bundleDetail = bundleOK ? "\(bundleID) fits \(pattern)" : "\(bundleID) doesn't fit \(pattern)"
+        let replacesSelf = wouldReplaceCertSigner(bundleID: bundleID, originalBundleID: originalBundleID, ownBundleID: ownBundleID)
+        var bundleOK = !replacesSelf && isValidBundleID(bundleID) && self.bundleID(bundleID, matches: pattern)
+        var bundleDetail = replacesSelf ? "\(bundleID) is CertSigner's own bundle ID"
+            : bundleOK ? "\(bundleID) fits \(pattern)" : "\(bundleID) doesn't fit \(pattern)"
         if bundleOK && !removeExtensions && !extensionIDs.isEmpty {
             let finals = extensionIDs.map { AppBundlePatcher.nestedBundleID($0, oldMain: originalBundleID, newMain: bundleID) }
             if finals.contains(where: { !self.bundleID($0, matches: pattern) }) {
@@ -107,9 +110,31 @@ enum SigningValidator {
     }
 
     /// The bundle ID to pre-fill: the profile's exact ID for explicit profiles, else the app's own.
-    static func suggestedBundleID(appBundleID: String, profile: ProvisioningProfile?) -> String {
+    /// Never CertSigner's own bundle ID for another app (installing it would replace CertSigner).
+    static func suggestedBundleID(appBundleID: String, profile: ProvisioningProfile?,
+                                  ownBundleID: String = Bundle.main.bundleIdentifier ?? "") -> String {
         guard let profile, !profile.isWildcard, !profile.bundleIDPattern.isEmpty else { return appBundleID }
+        if wouldReplaceCertSigner(bundleID: profile.bundleIDPattern, originalBundleID: appBundleID, ownBundleID: ownBundleID) {
+            return appBundleID
+        }
         return profile.bundleIDPattern
+    }
+
+    /// True when signing `originalBundleID` as `bundleID` would install over CertSigner itself.
+    /// Re-signing CertSigner's own IPA (its release ID or this copy's ID) is allowed.
+    static func wouldReplaceCertSigner(bundleID: String, originalBundleID: String, ownBundleID: String) -> Bool {
+        guard !ownBundleID.isEmpty, bundleID == ownBundleID else { return false }
+        return originalBundleID != ownBundleID && originalBundleID != UpdateRules.bundleID
+    }
+
+    /// Compatibility with an explicit profile for another App ID: the app keeps its bundle ID but is
+    /// signed with the profile's application-identifier, so it shares that app's identity.
+    static func sharedIdentityWarning(profile: ProvisioningProfile, originalBundleID: String, ownBundleID: String) -> String? {
+        let pattern = profile.bundleIDPattern
+        guard !profile.isWildcard, !pattern.isEmpty, pattern != originalBundleID else { return nil }
+        let appID = profile.applicationIdentifier.isEmpty ? pattern : profile.applicationIdentifier
+        let owner = pattern == ownBundleID ? " (CertSigner)" : ""
+        return "This app will share the identity of \(appID)\(owner): Keychain, App Groups and system UI such as Now Playing may resolve to that app. Signing still works."
     }
 
     static func validate(
@@ -120,7 +145,8 @@ enum SigningValidator {
         removeExtensions: Bool,
         udid: String,
         mode: SigningMode = .strict,
-        now: Date = Date()
+        now: Date = Date(),
+        ownBundleID: String = Bundle.main.bundleIdentifier ?? ""
     ) -> [SigningIssue] {
         var issues: [SigningIssue] = []
 
@@ -142,14 +168,23 @@ enum SigningValidator {
         }
 
         let pattern = profile.bundleIDPattern
-        // Compatibility keeps the original bundle ID: no App ID matching, no mismatch error or warning.
+        // Compatibility keeps the original bundle ID: no App ID matching and nothing blocks; with an
+        // explicit profile for another App ID it only warns that the identity is shared.
         let strict = mode == .strict
         if !strict {
-            // skip the bundle / extension App ID checks below
+            if let warning = sharedIdentityWarning(profile: profile, originalBundleID: originalBundleID, ownBundleID: ownBundleID) {
+                issues.append(SigningIssue(severity: .warning, message: warning))
+            }
+        } else if wouldReplaceCertSigner(bundleID: bundleID, originalBundleID: originalBundleID, ownBundleID: ownBundleID) {
+            issues.append(SigningIssue(severity: .error, message: "\(bundleID) is CertSigner's own bundle ID: installing this app would replace CertSigner. Use Compatibility mode, or give the app a bundle ID of its own."))
         } else if !isValidBundleID(bundleID) {
             issues.append(SigningIssue(severity: .error, message: "“\(bundleID)” isn't a valid bundle ID (letters, digits, dots and hyphens only)."))
         } else if !self.bundleID(bundleID, matches: pattern) {
-            issues.append(SigningIssue(severity: .error, message: "Bundle ID \(bundleID) isn't allowed by this profile (App ID: \(pattern)). Set the bundle ID to \(profile.isWildcard ? "something matching \(pattern)" : pattern)."))
+            if !profile.isWildcard && wouldReplaceCertSigner(bundleID: pattern, originalBundleID: originalBundleID, ownBundleID: ownBundleID) {
+                issues.append(SigningIssue(severity: .error, message: "This profile's App ID (\(pattern)) is CertSigner's own, so Strict mode can't sign other apps with it. Use Compatibility mode."))
+            } else {
+                issues.append(SigningIssue(severity: .error, message: "Bundle ID \(bundleID) isn't allowed by this profile (App ID: \(pattern)). Set the bundle ID to \(profile.isWildcard ? "something matching \(pattern)" : pattern)."))
+            }
         }
 
         if strict && !removeExtensions && !extensionIDs.isEmpty && isValidBundleID(bundleID) {

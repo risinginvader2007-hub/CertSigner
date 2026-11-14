@@ -62,6 +62,28 @@ final class SigningPipelineTests: XCTestCase {
         XCTAssertTrue(lines.contains("Devices: device-limited, 1 UDID listed"))
         XCTAssertTrue(lines.contains("get-task-allow: present (true)"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: fixtures.appendingPathComponent("compat.ipa").path))
+
+        // The identity each bundle was really signed with, read back from its executable.
+        XCTAssertTrue(lines.contains("Signed identity per bundle:"))
+        let identity = lines.filter { $0.contains("application-identifier ") }
+        let main = identity.first { $0.contains("[com.husk.test]:") }
+        XCTAssertNotNil(main, "main app line: \(identity)")
+        XCTAssertTrue(main?.contains("application-identifier ABCDE12345.com.other.app (differs from the bundle ID: shared identity)") == true)
+        XCTAssertTrue(main?.contains("team ABCDE12345") == true || main?.contains("team (none)") == true)
+        for appex in ["PlugIns/Share.appex", "PlugIns/Widget.appex"] {
+            XCTAssertTrue(identity.contains { $0.contains(appex) && $0.contains("ABCDE12345.com.other.app (differs") }, "\(appex): \(identity)")
+        }
+    }
+
+    /// Strict never installs another app over CertSigner: its own bundle ID is refused.
+    func testStrictRefusesCertSignersOwnBundleID() throws {
+        let own = try XCTUnwrap(Bundle.main.bundleIdentifier)
+        XCTAssertThrowsError(try sign(.strict, bundleIDOverride: own, output: "self.ipa")) { error in
+            guard case SigningError.sign(let message) = error else {
+                return XCTFail("Expected SigningError.sign, got \(error)")
+            }
+            XCTAssertTrue(message.contains("CertSigner's own bundle ID"), message)
+        }
     }
 
     /// Strict is unchanged: bundle ID rewritten to the explicit App ID, extensions then mismatch and block.

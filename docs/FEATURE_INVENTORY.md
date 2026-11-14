@@ -52,6 +52,9 @@ tested on a device is tracked in [`STATUS.md`](STATUS.md).
 - [x] Certificate picker (bottom sheet) + status/type badges + App ID row
 - [x] Signing mode sliding control: Compatibility (default) / Strict
 - [x] Pre-sign checks list (pass / fail / unknown icons, title, detail; stepper rail, passed checks collapse)
+- [x] Warnings card (amber, non-blocking) above the errors card: shared-identity warning (Compatibility + explicit profile for another App ID), no saved password, device not checked
+- [x] Strict refuses CertSigner's own bundle ID ("would replace CertSigner"); the suggested bundle ID is never CertSigner's own for another app
+- [x] Signing log: "Signed identity per bundle" (application-identifier, team, app groups, keychain groups, get-task-allow, count; flags a shared identity)
 - [x] Options: display name, keep original bundle ID toggle (+ bundle ID field when off), version, remove extensions (when any), remove Watch app (when present)
 - [x] After Signing: "Install when done" toggle (also persists the setting)
 - [x] Error list; Sign button disabled + shake when issues; "Fix the issues above" label
@@ -139,7 +142,7 @@ Automated check after stage 6: every Button / Label / Toggle / Picker / sheet / 
 10. Web installer → Install → **Import Certificate into CertSigner** → Open → "Imported … Ready to sign"; the certificate is active (app must be build 87 or later).
 11. First launch after installing a newly signed CertSigner: "Signed with …, expires …" toast once.
 12. Install: CapCut; delete and reinstall; install the same app twice; dismiss the iOS prompt → stall message with Reopen Prompt; already-installed hint; Share Install Log.
-13. Signing modes: Compatibility signs an app with extensions (e.g. Husk) and keeps its bundle ID; Strict blocks on an App ID mismatch.
+13. Signing modes: Compatibility signs an app with extensions (e.g. Husk) and keeps its bundle ID; Strict blocks on an App ID mismatch. With the explicit profile: Compatibility shows the amber "will share the identity of …" warning and still signs; Strict on another app says to use Compatibility and never pre-fills CertSigner's bundle ID; the signing log lists "Signed identity per bundle".
 14. Library delete → Undo within 5 s restores the app in place.
 15. Settings → Appearance: Blended accents, a custom blend (create, long-press delete), background animation toggle; app icon change shows no system alert.
 16. Storage dashboard: categories, detail screens, Clear Cache / Remove Unused IPAs show "Freed …".
