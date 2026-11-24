@@ -367,8 +367,7 @@ Bug reports and focused pull requests are welcome.
 
 ## License
 
-**No license file is currently included for CertSigner's own code.** Public source code alone does
-not grant permission to reuse or redistribute it.
+CertSigner is open source under the [MIT License](LICENSE).
 
 Third-party components keep their own licenses:
 
