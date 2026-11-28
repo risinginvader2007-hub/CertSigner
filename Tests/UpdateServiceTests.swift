@@ -280,6 +280,36 @@ final class UpdateServiceTests: XCTestCase {
                        "update dot: show=false installed=106 savedLatest=none skipped=107 installing=true source=check")
     }
 
+    // MARK: Settings → Updates row follows the indicator
+
+    @MainActor
+    func testSettingsStatusAfterSkipThisBuild() {
+        let defaults = freshDefaults()
+        UpdateDotRules.save(cache(107), to: defaults)
+        let service = UpdateService(defaults: defaults, installedBuild: 106)
+        let update = AvailableUpdate(manifest: manifest(build: 107), ipaURL: URL(string: "https://github.com/x")!, pageURL: nil)
+        XCTAssertEqual(UpdateService.settingsStatus(checkState: .available(update), dotBuild: service.dotBuild,
+                                                    skippedBuild: service.skippedBuild), "Build 107 available")
+        service.skip(update)
+        XCTAssertNil(service.dotBuild, "Home card and badge are gone")
+        XCTAssertEqual(UpdateService.settingsStatus(checkState: .available(update), dotBuild: service.dotBuild,
+                                                    skippedBuild: service.skippedBuild), "Build 107 skipped",
+                       "the row no longer says available once the indicator is hidden")
+    }
+
+    @MainActor
+    func testSettingsStatusKeepsTheSavedBuildWhenACheckFails() {
+        let defaults = freshDefaults()
+        UpdateDotRules.save(cache(107), to: defaults)
+        let service = UpdateService(defaults: defaults, installedBuild: 106)
+        XCTAssertEqual(service.dotBuild, 107, "cold launch: indicator from the saved check")
+        XCTAssertEqual(UpdateService.settingsStatus(checkState: .failed("GitHub answered 500."), dotBuild: service.dotBuild,
+                                                    skippedBuild: service.skippedBuild), "Build 107 available",
+                       "not 'Couldn't check' next to a valid indicator")
+        XCTAssertEqual(UpdateService.settingsStatus(checkState: .failed("offline"), dotBuild: nil, skippedBuild: 0), "Couldn't check")
+        XCTAssertEqual(UpdateService.settingsStatus(checkState: .idle, dotBuild: nil, skippedBuild: 0), "Check Now")
+    }
+
     // MARK: Update sheet content (never blank)
 
     /// Build 102 bug: the sheet opened with only a title and Close. Every state must show something:
