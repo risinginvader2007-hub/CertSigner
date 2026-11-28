@@ -204,6 +204,12 @@ enum UpdateRules {
         guard meta.bundleID == bundleID else { throw UpdateError.verification("bundle ID \(meta.bundleID)") }
         guard build(from: meta.build) == manifest.build else { throw UpdateError.verification("build \(meta.build)") }
     }
+
+    /// `verify` on a background thread: it reads and hashes the whole IPA, which must not block the
+    /// main actor (progress UI, Cancel).
+    static func verifyInBackground(ipa url: URL, against manifest: ReleaseManifest) async throws {
+        try await Task.detached(priority: .userInitiated) { try verify(ipa: url, against: manifest) }.value
+    }
 }
 
 // MARK: - Which certificate signs the update
@@ -351,13 +357,21 @@ final class UpdateService: ObservableObject {
 
     private let defaults: UserDefaults
     private let installedBuild: Int
+    private let steps: RunSteps
+    /// The latest update run. Kept after Cancel so the next run waits for it to really end:
+    /// zsign can't be interrupted, and both runs use the same files.
     private var runTask: Task<Void, Never>?
+    /// The only run allowed to change state, publish a signed IPA or start the install
+    /// (nil after Cancel). A cancelled run that is still finishing changes nothing.
+    private var runAttempt: UUID?
+    private var cancelledRunPending = false
     /// The check in progress (nil when none).
     private var checkTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard, installedBuild: Int = UpdateRules.installedBuild) {
+    init(defaults: UserDefaults = .standard, installedBuild: Int = UpdateRules.installedBuild, steps: RunSteps = .live) {
         self.defaults = defaults
         self.installedBuild = installedBuild
+        self.steps = steps
         skippedBuild = defaults.integer(forKey: Keys.skippedBuild)
         cache = UpdateDotRules.load(from: defaults)
     }
@@ -366,6 +380,22 @@ final class UpdateService: ObservableObject {
     /// not skipped, and not being installed right now.
     /// The build the dot (and the Home card) point at, from the saved check; nil = no dot.
     var dotBuild: Int? { showsDot ? cache?.latestBuild : nil }
+
+    /// The Settings → Updates row text. A build is promoted only when the indicator shows one
+    /// (`dotBuild`), so the row never says "available" after Skip This Build and never says
+    /// "Couldn't check" next to a valid saved indicator. The row always opens the sheet.
+    static func settingsStatus(checkState: CheckState, dotBuild: Int?, skippedBuild: Int) -> String {
+        if let dotBuild { return "Build \(dotBuild) available" }
+        switch checkState {
+        case .idle: return "Check Now"
+        case .checking: return "Checking…"
+        case .upToDate: return "Up to date"
+        case .available(let update):
+            // Hidden indicator with a loaded update: skipped, or being installed right now.
+            return update.build == skippedBuild ? "Build \(update.build) skipped" : "Installing build \(update.build)"
+        case .failed: return "Couldn't check"
+        }
+    }
 
     /// Logs the dot state and its inputs. Called whenever one of them changes: at launch (saved
     /// check), after each check, on skip, and when an install starts or ends.
@@ -693,16 +723,77 @@ final class UpdateService: ObservableObject {
     func start(_ update: AvailableUpdate, plan: UpdatePlan, certificates: CertificateStore,
                serverCertificates: ServerCertificateStore, method: InstallMethod, paleraFallback: Bool) {
         guard !isRunning, plan.canUpdate, let certificate = plan.certificate else { return }
+        // Reserve the run now, so a second tap can't start another one.
+        let attempt = UUID()
+        runAttempt = attempt
+        log = []
+        runState = .running(.download, 0)
+        let previous = runTask
+        let previousWasCancelled = cancelledRunPending
+        cancelledRunPending = false
         runTask = Task { [weak self] in
-            await self?.run(update, plan: plan, certificate: certificate, certificates: certificates,
-                            serverCertificates: serverCertificates, method: method, paleraFallback: paleraFallback)
+            if let previous {
+                if previousWasCancelled { self?.note("Waiting for the cancelled attempt to stop…") }
+                await previous.value
+            }
+            guard let self, self.owns(attempt), !Task.isCancelled else { return }
+            await self.run(update, plan: plan, certificate: certificate, certificates: certificates,
+                           serverCertificates: serverCertificates, method: method, paleraFallback: paleraFallback,
+                           attempt: attempt)
         }
     }
 
     func cancel() {
         runTask?.cancel()
-        runTask = nil
+        if runTask != nil { cancelledRunPending = true }
+        runAttempt = nil
         if isRunning { runState = .idle }
+    }
+
+    private func owns(_ attempt: UUID) -> Bool { runAttempt == attempt }
+
+    /// Thrown inside a run that was cancelled or replaced: it stops without changing anything.
+    private struct Superseded: Error {}
+
+    private func checkStillOwned(_ attempt: UUID) throws {
+        guard owns(attempt), !Task.isCancelled else { throw Superseded() }
+    }
+
+    /// What a run needs from outside, so tests can drive it step by step (the app uses `.live`).
+    struct InstallRequest {
+        let serverCertificates: ServerCertificateStore
+        let method: InstallMethod
+        let paleraFallback: Bool
+        let signingTeamID: String?
+    }
+
+    struct RunSteps {
+        /// Downloads the IPA to a temporary file (progress: received, expected bytes).
+        var download: (URL, @escaping (String) -> Void, @escaping FileDownloader.ProgressHandler) async throws -> URL
+        var password: @MainActor (CertificateStore, UUID) -> String?
+        /// Signs off the main actor; `emit` may be called on any thread.
+        var sign: (SigningInput, @escaping @Sendable (SigningEvent) -> Void) async throws -> SigningOutput
+        var install: @MainActor (SignedApp, URL, InstallRequest) async -> Void
+
+        static let live = RunSteps(
+            download: { url, log, progress in
+                let downloader = FileDownloader(log: log, onProgress: progress)
+                return try await withTaskCancellationHandler {
+                    try await downloader.start(url)
+                } onCancel: {
+                    downloader.cancel()
+                }
+            },
+            password: { certificates, id in certificates.password(for: id) },
+            sign: { input, emit in
+                try await Task.detached(priority: .userInitiated) { try SigningWorker.run(input, emit: emit) }.value
+            },
+            install: { app, ipa, request in
+                await InstallSession.shared.start(app: app, ipaURL: ipa, iconURL: nil, method: request.method,
+                                                  certificates: request.serverCertificates,
+                                                  signingTeamID: request.signingTeamID, paleraFallback: request.paleraFallback)
+            }
+        )
     }
 
     /// Back to the start after a failure or a finished hand-off (not while running).
@@ -716,9 +807,12 @@ final class UpdateService: ObservableObject {
         if error { AppLog.error("update: \(text)") } else { AppLog.info("update: \(text)") }
     }
 
+    /// One update run. Every state change happens on the main actor between awaits, and after
+    /// every await the run checks it still owns the update (`owns(attempt)`), so a cancelled run
+    /// that is still finishing can't touch the UI, the signed file or the install.
     private func run(_ update: AvailableUpdate, plan: UpdatePlan, certificate: Certificate, certificates: CertificateStore,
-                     serverCertificates: ServerCertificateStore, method: InstallMethod, paleraFallback: Bool) async {
-        log = []
+                     serverCertificates: ServerCertificateStore, method: InstallMethod, paleraFallback: Bool,
+                     attempt: UUID) async {
         let folder = Self.folder.appendingPathComponent("\(update.build)", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let downloaded = folder.appendingPathComponent(UpdateRules.assetName)
@@ -728,43 +822,53 @@ final class UpdateService: ObservableObject {
         note("Updating build \(UpdateRules.installedBuild) → \(update.build) with \(certificate.nickname)")
 
         do {
-            // 1. Download (reused when an earlier attempt already verified it).
-            if (try? UpdateRules.verify(ipa: downloaded, against: update.manifest)) != nil {
+            // 1. Download (reused when an earlier attempt already verified it). Verification
+            //    reads and hashes the whole IPA, so it runs off the main actor.
+            let cached = (try? await UpdateRules.verifyInBackground(ipa: downloaded, against: update.manifest)) != nil
+            try checkStillOwned(attempt)
+            if cached {
                 note("Using the build \(update.build) download from the last attempt")
             } else {
                 runState = .running(.download, 0)
                 note("Downloading \(update.ipaURL.absoluteString)")
-                let downloader = FileDownloader(log: { line in Task { @MainActor in UpdateService.shared.note(line) } }) { received, expected in
-                    let total = Double(expected ?? update.manifest.ipa.size)
-                    let fraction = total > 0 ? min(1, Double(received) / total) : 0
-                    Task { @MainActor in
-                        if case .running(.download, _) = UpdateService.shared.runState {
-                            UpdateService.shared.runState = .running(.download, fraction)
-                        }
-                    }
-                }
+                let total = Double(update.manifest.ipa.size)
                 let temp: URL
                 do {
-                    temp = try await withTaskCancellationHandler {
-                        try await downloader.start(update.ipaURL)
-                    } onCancel: {
-                        downloader.cancel()
-                    }
+                    temp = try await steps.download(update.ipaURL, { [weak self] line in
+                        Task { @MainActor in
+                            guard let self, self.owns(attempt) else { return }
+                            self.note(line)
+                        }
+                    }, { [weak self] received, expected in
+                        let whole = Double(expected ?? Int64(total))
+                        let fraction = whole > 0 ? min(1, Double(received) / whole) : 0
+                        Task { @MainActor in
+                            guard let self, self.owns(attempt), case .running(.download, _) = self.runState else { return }
+                            self.runState = .running(.download, fraction)
+                        }
+                    })
                 } catch is CancellationError {
-                    return
+                    throw CancellationError()
                 } catch {
+                    try checkStillOwned(attempt)
                     throw UpdateError.download(error.localizedDescription)
                 }
+                try checkStillOwned(attempt)
                 try? FileManager.default.removeItem(at: downloaded)
                 try FileManager.default.moveItem(at: temp, to: downloaded)
 
                 // 2. Verify.
                 stage = .verify
                 runState = .running(.verify, 0)
-                try UpdateRules.verify(ipa: downloaded, against: update.manifest)
+                do {
+                    try await UpdateRules.verifyInBackground(ipa: downloaded, against: update.manifest)
+                } catch {
+                    try checkStillOwned(attempt)
+                    throw error
+                }
+                try checkStillOwned(attempt)
                 note("Verified: \(update.manifest.ipa.size) bytes, SHA-256 \(update.manifest.ipa.sha256.prefix(12))…, build \(update.build)")
             }
-            try Task.checkCancellation()
 
             // 3. Sign with the same function, inputs and settings as a normal signing job
             //    (SigningInput.make + SigningWorker.run), keeping this copy's bundle ID.
@@ -776,8 +880,9 @@ final class UpdateService: ObservableObject {
             try? FileManager.default.removeItem(at: partial)
             Self.removeStaleSigningFolders()
 
-            let password = certificates.password(for: certificate.id)
-            let ipaMeta = try? IPAInspector.inspect(downloaded)
+            let password = steps.password(certificates, certificate.id)
+            let ipaMeta = await Task.detached(priority: .userInitiated) { try? IPAInspector.inspect(downloaded) }.value
+            try checkStillOwned(attempt)
             let options = Self.signingOptions(for: plan.running, ipaBundleID: ipaMeta?.bundleID ?? UpdateRules.bundleID)
             logSigningSetup(update: update, plan: plan, certificate: certificate, certificates: certificates,
                             ipaMeta: ipaMeta, options: options, password: password, ipa: downloaded, output: partial)
@@ -790,23 +895,28 @@ final class UpdateService: ObservableObject {
             let zsignLines = LineCollector()
             let output: SigningOutput
             do {
-                output = try await Task.detached(priority: .userInitiated) {
-                    try SigningWorker.run(input) { event in
-                        if case .log(let text, let isError) = event { zsignLines.add(text, isError: isError) }
-                        Task { @MainActor in UpdateService.shared.handle(event) }
+                output = try await steps.sign(input) { [weak self] event in
+                    if case .log(let text, let isError) = event { zsignLines.add(text, isError: isError) }
+                    Task { @MainActor in
+                        guard let self, self.owns(attempt) else { return }
+                        self.handle(event)
                     }
-                }.value
+                }
             } catch {
+                // A cancelled attempt's partial file may already belong to the next attempt.
+                guard owns(attempt) else { throw Superseded() }
                 try? FileManager.default.removeItem(at: partial)
                 let explained = Self.explainSigningFailure(error, lines: zsignLines.items)
                 throw UpdateError.signing("\(explained.cause) \(explained.fix)")
             }
+            // Cancelled while zsign was running: never publish this attempt's output.
+            try checkStillOwned(attempt)
             guard output.bundleID == plan.running.bundleID else {
+                try? FileManager.default.removeItem(at: partial)
                 throw UpdateError.signing("The bundle ID came out as \(output.bundleID) instead of \(plan.running.bundleID), so iOS would install a second app instead of updating this one.")
             }
             try FileManager.default.moveItem(at: partial, to: signed)
             note("Signed as \(output.bundleID)")
-            try Task.checkCancellation()
 
             // 4. Install through the shared install session (the user confirms the iOS prompt).
             stage = .install
@@ -818,19 +928,24 @@ final class UpdateService: ObservableObject {
                                 certificateID: certificate.id, certificateName: certificate.nickname,
                                 expiresAt: certificate.expirationDate, fileName: signed.lastPathComponent,
                                 iconFileName: nil, size: size, sourceAppID: nil)
-            await InstallSession.shared.start(app: app, ipaURL: signed, iconURL: nil, method: method,
-                                              certificates: serverCertificates,
-                                              signingTeamID: certificate.profile?.teamID, paleraFallback: paleraFallback)
-        } catch is CancellationError {
+            await steps.install(app, signed, InstallRequest(serverCertificates: serverCertificates, method: method,
+                                                            paleraFallback: paleraFallback,
+                                                            signingTeamID: certificate.profile?.teamID))
+        } catch is CancellationError, is Superseded {
+            // Cancelled (or replaced by a newer attempt): leave no half-signed file behind and,
+            // unless a newer attempt owns the update now, show the idle state.
+            try? FileManager.default.removeItem(at: signed.appendingPathExtension("partial"))
+            guard owns(attempt) else { return }
             runState = .idle
         } catch {
+            guard owns(attempt) else { return }
             let message = (error as? UpdateError)?.localizedDescription ?? error.localizedDescription
             note(message, error: true)
             if stage == .verify { try? FileManager.default.removeItem(at: downloaded) }
             runState = .failed(stage, message)
             Haptics.error()
         }
-        saveLog(build: update.build)
+        if owns(attempt) { saveLog(build: update.build) }
     }
 
     // MARK: Signing helpers
