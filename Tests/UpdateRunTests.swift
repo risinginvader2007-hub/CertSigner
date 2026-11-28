@@ -76,9 +76,10 @@ final class UpdateRunTests: XCTestCase {
         try Self.storedZip(["Payload/CertSigner.app/Info.plist": info]).write(to: ipa)
         cleanup.append(ipa)
         let size = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: ipa.path)[.size] as? NSNumber).int64Value
+        let sha256 = try checksum ?? UpdateRules.sha256(of: ipa)
         let manifest = ReleaseManifest(schema: 1, build: build, version: "1.0", commit: "abc", bundleID: "com.certsigner.app",
                                        minimumOS: "16.0",
-                                       ipa: .init(name: "CertSigner.ipa", size: size, sha256: checksum ?? (try UpdateRules.sha256(of: ipa))),
+                                       ipa: .init(name: "CertSigner.ipa", size: size, sha256: sha256),
                                        published: "2026-11-28T00:00:00Z", notes: [])
         let update = AvailableUpdate(manifest: manifest, ipaURL: URL(string: "https://github.com/x/CertSigner.ipa")!, pageURL: nil)
         let certificate = Certificate(record: CertificateRecord(id: UUID(), nickname: "Test", dateAdded: Date(),
