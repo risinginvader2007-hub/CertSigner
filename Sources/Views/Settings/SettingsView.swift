@@ -32,7 +32,7 @@ struct SettingsView: View {
 
     private var updateStatus: String {
         UpdateService.settingsStatus(checkState: updates.checkState, dotBuild: updates.dotBuild,
-                                     skippedBuild: updates.skippedBuild)
+                                     skippedBuild: updates.skippedBuild, installingBuild: updates.installingBuild)
     }
 
     private var appVersion: String {

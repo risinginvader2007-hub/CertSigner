@@ -344,9 +344,12 @@ final class UpdateService: ObservableObject {
     @Published private(set) var checkState: CheckState = .idle
     @Published private(set) var runState: RunState = .idle {
         didSet {
+            if runState != .installing { installingBuild = nil }
             if (oldValue == .installing) != (runState == .installing) { logDot(source: "install") }
         }
     }
+    /// The build handed to the install session, while `runState` is `.installing`.
+    @Published private(set) var installingBuild: Int?
     @Published private(set) var log: [LogLine] = []
     @Published private(set) var skippedBuild: Int
     /// The update sheet (RootView presents it; Home and Settings open it).
@@ -381,18 +384,21 @@ final class UpdateService: ObservableObject {
     /// The build the dot (and the Home card) point at, from the saved check; nil = no dot.
     var dotBuild: Int? { showsDot ? cache?.latestBuild : nil }
 
-    /// The Settings → Updates row text. A build is promoted only when the indicator shows one
-    /// (`dotBuild`), so the row never says "available" after Skip This Build and never says
-    /// "Couldn't check" next to a valid saved indicator. The row always opens the sheet.
-    static func settingsStatus(checkState: CheckState, dotBuild: Int?, skippedBuild: Int) -> String {
+    /// The Settings → Updates row text.
+    /// - An install in progress names the build actually being installed (even a skipped one, or
+    ///   while a newer build is found meanwhile).
+    /// - Otherwise a build is promoted only when the indicator shows one (`dotBuild`), so the row
+    ///   never says "available" after Skip This Build and never says "Couldn't check" next to a
+    ///   valid saved indicator. The row always opens the sheet.
+    static func settingsStatus(checkState: CheckState, dotBuild: Int?, skippedBuild: Int, installingBuild: Int?) -> String {
+        if let installingBuild { return "Installing build \(installingBuild)" }
         if let dotBuild { return "Build \(dotBuild) available" }
         switch checkState {
         case .idle: return "Check Now"
         case .checking: return "Checking…"
         case .upToDate: return "Up to date"
         case .available(let update):
-            // Hidden indicator with a loaded update: skipped, or being installed right now.
-            return update.build == skippedBuild ? "Build \(update.build) skipped" : "Installing build \(update.build)"
+            return update.build == skippedBuild ? "Build \(update.build) skipped" : "Build \(update.build) available"
         case .failed: return "Couldn't check"
         }
     }
@@ -770,6 +776,8 @@ final class UpdateService: ObservableObject {
     struct RunSteps {
         /// Downloads the IPA to a temporary file (progress: received, expected bytes).
         var download: (URL, @escaping (String) -> Void, @escaping FileDownloader.ProgressHandler) async throws -> URL
+        /// Size, SHA-256, bundle ID and build of the IPA, off the main actor.
+        var verify: (URL, ReleaseManifest) async throws -> Void
         var password: @MainActor (CertificateStore, UUID) -> String?
         /// Signs off the main actor; `emit` may be called on any thread.
         var sign: (SigningInput, @escaping @Sendable (SigningEvent) -> Void) async throws -> SigningOutput
@@ -784,6 +792,7 @@ final class UpdateService: ObservableObject {
                     downloader.cancel()
                 }
             },
+            verify: { ipa, manifest in try await UpdateRules.verifyInBackground(ipa: ipa, against: manifest) },
             password: { certificates, id in certificates.password(for: id) },
             sign: { input, emit in
                 try await Task.detached(priority: .userInitiated) { try SigningWorker.run(input, emit: emit) }.value
@@ -824,7 +833,8 @@ final class UpdateService: ObservableObject {
         do {
             // 1. Download (reused when an earlier attempt already verified it). Verification
             //    reads and hashes the whole IPA, so it runs off the main actor.
-            let cached = (try? await UpdateRules.verifyInBackground(ipa: downloaded, against: update.manifest)) != nil
+            let cached = FileManager.default.fileExists(atPath: downloaded.path)
+                && (try? await steps.verify(downloaded, update.manifest)) != nil
             try checkStillOwned(attempt)
             if cached {
                 note("Using the build \(update.build) download from the last attempt")
@@ -853,15 +863,22 @@ final class UpdateService: ObservableObject {
                     try checkStillOwned(attempt)
                     throw UpdateError.download(error.localizedDescription)
                 }
-                try checkStillOwned(attempt)
-                try? FileManager.default.removeItem(at: downloaded)
-                try FileManager.default.moveItem(at: temp, to: downloaded)
+                // The downloader hands over a temporary file this run owns until it's in the
+                // update cache: delete it on every way out before that (e.g. Cancel won the race).
+                do {
+                    try checkStillOwned(attempt)
+                    try? FileManager.default.removeItem(at: downloaded)
+                    try FileManager.default.moveItem(at: temp, to: downloaded)
+                } catch {
+                    try? FileManager.default.removeItem(at: temp)
+                    throw error
+                }
 
                 // 2. Verify.
                 stage = .verify
                 runState = .running(.verify, 0)
                 do {
-                    try await UpdateRules.verifyInBackground(ipa: downloaded, against: update.manifest)
+                    try await steps.verify(downloaded, update.manifest)
                 } catch {
                     try checkStillOwned(attempt)
                     throw error
@@ -922,6 +939,7 @@ final class UpdateService: ObservableObject {
             stage = .install
             defaults.set(update.build, forKey: Keys.pendingBuild)
             runState = .installing
+            installingBuild = update.build
             let size = (try? FileManager.default.attributesOfItem(atPath: signed.path)[.size] as? NSNumber)?.int64Value ?? 0
             let app = SignedApp(id: UUID(), name: plan.running.displayName, bundleID: plan.running.bundleID,
                                 version: "\(update.manifest.version) (\(update.build))", signedAt: Date(),

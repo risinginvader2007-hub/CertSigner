@@ -289,11 +289,11 @@ final class UpdateServiceTests: XCTestCase {
         let service = UpdateService(defaults: defaults, installedBuild: 106)
         let update = AvailableUpdate(manifest: manifest(build: 107), ipaURL: URL(string: "https://github.com/x")!, pageURL: nil)
         XCTAssertEqual(UpdateService.settingsStatus(checkState: .available(update), dotBuild: service.dotBuild,
-                                                    skippedBuild: service.skippedBuild), "Build 107 available")
+                                                    skippedBuild: service.skippedBuild, installingBuild: nil), "Build 107 available")
         service.skip(update)
         XCTAssertNil(service.dotBuild, "Home card and badge are gone")
         XCTAssertEqual(UpdateService.settingsStatus(checkState: .available(update), dotBuild: service.dotBuild,
-                                                    skippedBuild: service.skippedBuild), "Build 107 skipped",
+                                                    skippedBuild: service.skippedBuild, installingBuild: nil), "Build 107 skipped",
                        "the row no longer says available once the indicator is hidden")
     }
 
@@ -304,10 +304,35 @@ final class UpdateServiceTests: XCTestCase {
         let service = UpdateService(defaults: defaults, installedBuild: 106)
         XCTAssertEqual(service.dotBuild, 107, "cold launch: indicator from the saved check")
         XCTAssertEqual(UpdateService.settingsStatus(checkState: .failed("GitHub answered 500."), dotBuild: service.dotBuild,
-                                                    skippedBuild: service.skippedBuild), "Build 107 available",
+                                                    skippedBuild: service.skippedBuild, installingBuild: nil), "Build 107 available",
                        "not 'Couldn't check' next to a valid indicator")
-        XCTAssertEqual(UpdateService.settingsStatus(checkState: .failed("offline"), dotBuild: nil, skippedBuild: 0), "Couldn't check")
-        XCTAssertEqual(UpdateService.settingsStatus(checkState: .idle, dotBuild: nil, skippedBuild: 0), "Check Now")
+        XCTAssertEqual(UpdateService.settingsStatus(checkState: .failed("offline"), dotBuild: nil, skippedBuild: 0, installingBuild: nil), "Couldn't check")
+        XCTAssertEqual(UpdateService.settingsStatus(checkState: .idle, dotBuild: nil, skippedBuild: 0, installingBuild: nil), "Check Now")
+    }
+
+    func testSettingsStatusNamesTheBuildBeingInstalled() {
+        let skipped = AvailableUpdate(manifest: manifest(build: 107), ipaURL: URL(string: "https://github.com/x")!, pageURL: nil)
+        let newer = AvailableUpdate(manifest: manifest(build: 108), ipaURL: URL(string: "https://github.com/x")!, pageURL: nil)
+        // A skipped build installed by hand from the sheet: not "skipped" while it installs.
+        XCTAssertEqual(UpdateService.settingsStatus(checkState: .available(skipped), dotBuild: nil, skippedBuild: 107,
+                                                    installingBuild: 107), "Installing build 107")
+        // A foreground check finds 108 while 107 installs: the row keeps naming 107.
+        XCTAssertEqual(UpdateService.settingsStatus(checkState: .available(newer), dotBuild: nil, skippedBuild: 0,
+                                                    installingBuild: 107), "Installing build 107")
+    }
+
+    @MainActor
+    func testNewerBuildIsPromotedAfterAnOlderOneWasSkipped() {
+        let defaults = freshDefaults()
+        UpdateDotRules.save(cache(108), to: defaults)
+        defaults.set(107, forKey: UpdateService.Keys.skippedBuild)
+        let service = UpdateService(defaults: defaults, installedBuild: 106)
+        let newer = AvailableUpdate(manifest: manifest(build: 108), ipaURL: URL(string: "https://github.com/x")!, pageURL: nil)
+        XCTAssertEqual(service.dotBuild, 108)
+        XCTAssertNil(service.installingBuild)
+        XCTAssertEqual(UpdateService.settingsStatus(checkState: .available(newer), dotBuild: service.dotBuild,
+                                                    skippedBuild: service.skippedBuild, installingBuild: service.installingBuild),
+                       "Build 108 available")
     }
 
     // MARK: Update sheet content (never blank)

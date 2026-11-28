@@ -66,14 +66,17 @@ final class UpdateRunTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeFixture(checksum: String? = nil) throws -> Fixture {
+    /// `payloadBytes` adds a file of that size to the app, for a realistically large IPA.
+    private func makeFixture(checksum: String? = nil, payloadBytes: Int = 0) throws -> Fixture {
         let build = 990_000 + Int.random(in: 0..<9_999)
         let info = try PropertyListSerialization.data(fromPropertyList: [
             "CFBundleIdentifier": "com.certsigner.app", "CFBundleVersion": "\(build)",
             "CFBundleShortVersionString": "1.0", "CFBundleName": "CertSigner",
         ], format: .xml, options: 0)
         let ipa = FileManager.default.temporaryDirectory.appendingPathComponent("UpdateRun-\(UUID().uuidString).ipa")
-        try Self.storedZip(["Payload/CertSigner.app/Info.plist": info]).write(to: ipa)
+        var entries: [ZipEntry] = [.init(name: "Payload/CertSigner.app/Info.plist", content: .data(info))]
+        if payloadBytes > 0 { entries.append(.init(name: "Payload/CertSigner.app/Payload.bin", content: .pattern(payloadBytes))) }
+        try Self.writeStoredZip(entries, to: ipa)
         cleanup.append(ipa)
         let size = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: ipa.path)[.size] as? NSNumber).int64Value
         let sha256 = try checksum ?? UpdateRules.sha256(of: ipa)
@@ -93,15 +96,39 @@ final class UpdateRunTests: XCTestCase {
                        plan: UpdatePlan(certificate: certificate, running: running, checks: []), folder: folder)
     }
 
+    /// Lets a step reach the service that runs it (set after the service is created).
+    private final class ServiceBox: @unchecked Sendable { weak var service: UpdateService? }
+
+    /// Temporary files the fake downloader handed over.
+    private final class Temps: @unchecked Sendable {
+        private let lock = NSLock()
+        private var urls: [URL] = []
+        func add(_ url: URL) { lock.lock(); urls.append(url); lock.unlock() }
+        var all: [URL] { lock.lock(); defer { lock.unlock() }; return urls }
+    }
+
     /// Steps that copy the fixture IPA as the "download", sign by writing "attempt N", and record installs.
-    private func steps(_ fixture: Fixture, recorder: Recorder, holdFirstSign blocker: Blocker? = nil) -> UpdateService.RunSteps {
+    /// `afterDownload` runs once the temporary file exists, before it's returned.
+    /// `holdVerify` holds the first verification of a fresh download until opened.
+    private func steps(_ fixture: Fixture, recorder: Recorder, holdFirstSign blocker: Blocker? = nil,
+                       temps: Temps = Temps(), afterDownload: (@Sendable () async -> Void)? = nil,
+                       holdVerify: Blocker? = nil, verifyFinished: Recorder? = nil) -> UpdateService.RunSteps {
         let source = fixture.sourceIPA
+        let verifyCalls = Recorder()
         return UpdateService.RunSteps(
             download: { _, _, _ in
                 recorder.download()
                 let temp = FileManager.default.temporaryDirectory.appendingPathComponent("UpdateRun-dl-\(UUID().uuidString)")
                 try FileManager.default.copyItem(at: source, to: temp)
+                temps.add(temp)
+                await afterDownload?()
                 return temp
+            },
+            verify: { ipa, manifest in
+                let call = verifyCalls.beginSign()
+                defer { verifyCalls.endSign(); verifyFinished?.download() }
+                if call == 1, let holdVerify { await holdVerify.wait() }
+                try await UpdateRules.verifyInBackground(ipa: ipa, against: manifest)
             },
             password: { _, _ in "test" },
             sign: { input, emit in
@@ -224,36 +251,185 @@ final class UpdateRunTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.downloaded.path), "the bad download is deleted")
     }
 
-    // MARK: Minimal ZIP writer (stored entries), so the test needs no extra package
+    // MARK: Follow-up review: hand-off, double start, cache replacement, verify cancel, large IPA
 
-    private static func storedZip(_ files: [String: Data]) -> Data {
-        var body = Data(), directory = Data()
-        func u16(_ v: Int, _ d: inout Data) { var x = UInt16(v).littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
-        func u32(_ v: UInt32, _ d: inout Data) { var x = v.littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
-        for (name, data) in files.sorted(by: { $0.key < $1.key }) {
-            let nameData = Data(name.utf8), crc = crc32(data), offset = UInt32(body.count)
-            u32(0x0403_4b50, &body); u16(20, &body); u16(0, &body); u16(0, &body); u16(0, &body); u16(0x21, &body)
-            u32(crc, &body); u32(UInt32(data.count), &body); u32(UInt32(data.count), &body)
-            u16(nameData.count, &body); u16(0, &body); body.append(nameData); body.append(data)
-
-            u32(0x0201_4b50, &directory); u16(20, &directory); u16(20, &directory); u16(0, &directory); u16(0, &directory)
-            u16(0, &directory); u16(0x21, &directory); u32(crc, &directory)
-            u32(UInt32(data.count), &directory); u32(UInt32(data.count), &directory)
-            u16(nameData.count, &directory); u16(0, &directory); u16(0, &directory); u16(0, &directory); u16(0, &directory)
-            u32(0, &directory); u32(offset, &directory); directory.append(nameData)
-        }
-        var end = Data()
-        u32(0x0605_4b50, &end); u16(0, &end); u16(0, &end); u16(files.count, &end); u16(files.count, &end)
-        u32(UInt32(directory.count), &end); u32(UInt32(body.count), &end); u16(0, &end)
-        return body + directory + end
+    /// Cancel lands while the downloader is handing over its file: the temporary IPA is deleted,
+    /// nothing is signed or installed, and the existing cache file is left alone.
+    func testCancelDuringDownloadHandoffDeletesTheTemporaryFile() async throws {
+        let fixture = try makeFixture()
+        try FileManager.default.createDirectory(at: fixture.folder, withIntermediateDirectories: true)
+        try Data("old cache".utf8).write(to: fixture.downloaded) // fails verification, so a download starts
+        let recorder = Recorder(), temps = Temps(), box = ServiceBox()
+        let service = UpdateService(defaults: freshDefaults(), installedBuild: 100,
+                                    steps: steps(fixture, recorder: recorder, temps: temps,
+                                                 afterDownload: { await MainActor.run { box.service?.cancel() } }))
+        box.service = service
+        start(service, fixture)
+        try await waitUntil("the downloader handed over a file") { temps.all.count == 1 }
+        let temp = try XCTUnwrap(temps.all.first)
+        try await waitUntil("the handed-over file is deleted") { !FileManager.default.fileExists(atPath: temp.path) }
+        XCTAssertEqual(recorder.signCalls, 0)
+        XCTAssertTrue(recorder.installs.isEmpty)
+        XCTAssertEqual(try String(contentsOf: fixture.downloaded, encoding: .utf8), "old cache",
+                       "the cancelled attempt didn't replace the cache")
+        XCTAssertEqual(service.runState, .idle)
     }
 
-    private static func crc32(_ data: Data) -> UInt32 {
-        var crc: UInt32 = 0xFFFF_FFFF
-        for byte in data {
-            crc ^= UInt32(byte)
-            for _ in 0..<8 { crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB8_8320 : crc >> 1 }
+    /// Two immediate Update taps: one run, one install.
+    func testTwoImmediateStartsInstallOnce() async throws {
+        let fixture = try makeFixture()
+        let recorder = Recorder()
+        let service = UpdateService(defaults: freshDefaults(), installedBuild: 100, steps: steps(fixture, recorder: recorder))
+        start(service, fixture)
+        start(service, fixture)
+        try await waitUntil("installed") { !recorder.installs.isEmpty }
+        XCTAssertEqual(recorder.installs, ["attempt 1"])
+        XCTAssertEqual(recorder.downloads, 1)
+        XCTAssertEqual(recorder.signCalls, 1)
+        XCTAssertEqual(service.installingBuild, fixture.build, "the row names the build being installed")
+    }
+
+    /// A corrupt file in the update cache is replaced by a valid fresh download.
+    func testCorruptCacheIsReplacedByAFreshDownload() async throws {
+        let fixture = try makeFixture()
+        try FileManager.default.createDirectory(at: fixture.folder, withIntermediateDirectories: true)
+        try Data("corrupt".utf8).write(to: fixture.downloaded)
+        let recorder = Recorder()
+        let service = UpdateService(defaults: freshDefaults(), installedBuild: 100, steps: steps(fixture, recorder: recorder))
+        start(service, fixture)
+        try await waitUntil("installed") { !recorder.installs.isEmpty }
+        XCTAssertEqual(recorder.downloads, 1)
+        XCTAssertEqual(try Data(contentsOf: fixture.downloaded), try Data(contentsOf: fixture.sourceIPA))
+    }
+
+    /// Cancel while the downloaded IPA is being verified: that attempt never signs. A retry then
+    /// runs normally, which also proves the cancelled run has ended.
+    func testCancelDuringVerificationPreventsSigning() async throws {
+        let fixture = try makeFixture()
+        let recorder = Recorder(), verifyGate = Blocker()
+        let verifies = Recorder() // counts finished verifications (its download counter)
+        let service = UpdateService(defaults: freshDefaults(), installedBuild: 100,
+                                    steps: steps(fixture, recorder: recorder, holdVerify: verifyGate, verifyFinished: verifies))
+        start(service, fixture)
+        try await waitUntil("verifying") { service.runState == .running(.verify, 0) }
+        service.cancel()
+        verifyGate.open()
+        try await waitUntil("the held verification finished") { verifies.downloads == 1 }
+        XCTAssertEqual(recorder.signCalls, 0, "the cancelled attempt doesn't sign")
+
+        start(service, fixture)
+        try await waitUntil("the retry installed") { !recorder.installs.isEmpty }
+        XCTAssertEqual(recorder.signCalls, 1, "only the retry signed")
+        XCTAssertEqual(recorder.installs, ["attempt 1"])
+    }
+
+    /// A realistically large IPA: verification hashes it off the main actor, so the main actor
+    /// keeps running (counted with a 5 ms ticker). The same work on the main actor, measured for
+    /// comparison, blocks the ticker for its whole duration.
+    func testLargeIPAVerificationKeepsTheMainActorResponsive() async throws {
+        let megabytes = 128
+        let fixture = try makeFixture(payloadBytes: megabytes * 1_024 * 1_024)
+        let manifest = fixture.update.manifest
+
+        func measure(_ work: () async throws -> Void) async rethrows -> (seconds: Double, ticks: Int, maxGap: Double) {
+            let ticks = TickLog()
+            let ticker = Task { @MainActor in
+                while !Task.isCancelled {
+                    ticks.dates.append(Date())
+                    try? await Task.sleep(nanoseconds: 5_000_000)
+                }
+            }
+            await Task.yield()
+            let started = Date()
+            try await work()
+            let ended = Date()
+            ticker.cancel()
+            let during = ticks.dates.filter { $0 > started && $0 < ended }
+            let points = [started] + during + [ended]
+            let maxGap = zip(points, points.dropFirst()).map { $1.timeIntervalSince($0) }.max() ?? 0
+            return (ended.timeIntervalSince(started), during.count, maxGap)
         }
-        return ~crc
+
+        let background = try await measure { try await UpdateRules.verifyInBackground(ipa: fixture.sourceIPA, against: manifest) }
+        let onMain = try await measure { try UpdateRules.verify(ipa: fixture.sourceIPA, against: manifest) }
+        print(String(format: "PERF update verify %d MB: background %.2f s, %d main-actor ticks, max gap %.0f ms | on main %.2f s, %d ticks, max gap %.0f ms",
+                     megabytes, background.seconds, background.ticks, background.maxGap * 1000,
+                     onMain.seconds, onMain.ticks, onMain.maxGap * 1000))
+        XCTAssertGreaterThan(background.ticks, 0, "the main actor ran while the IPA was hashed")
+        XCTAssertEqual(onMain.ticks, 0, "control: hashing on the main actor blocks it")
+        if onMain.seconds > 0.2 {
+            XCTAssertLessThan(background.maxGap, onMain.seconds / 2, "no main-actor stall close to the hashing time")
+        }
+    }
+
+    @MainActor private final class TickLog { var dates: [Date] = [] }
+
+    // MARK: Minimal ZIP writer (stored entries, streamed to disk), so the test needs no extra package
+
+    private struct ZipEntry {
+        enum Content { case data(Data), pattern(Int) }
+        let name: String
+        let content: Content
+    }
+
+    private static func writeStoredZip(_ entries: [ZipEntry], to url: URL) throws {
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        let file = try FileHandle(forWritingTo: url)
+        defer { try? file.close() }
+        func u16(_ v: Int, _ d: inout Data) { var x = UInt16(v).littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+        func u32(_ v: UInt32, _ d: inout Data) { var x = v.littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+        // A large entry is a repeating 1 MB chunk of varied bytes (not zeros), written chunk by chunk.
+        let chunk = Data((0..<(1 << 20)).map { UInt8(truncatingIfNeeded: $0 &* 31 &+ 7) })
+        func chunks(_ content: ZipEntry.Content, _ body: (Data) throws -> Void) rethrows {
+            switch content {
+            case .data(let data): try body(data)
+            case .pattern(let size):
+                var left = size
+                while left > 0 { let n = min(left, chunk.count); try body(n == chunk.count ? chunk : chunk.prefix(n)); left -= n }
+            }
+        }
+        var directory = Data(), offset = 0
+        for entry in entries {
+            var crc = CRC32()
+            var size = 0
+            chunks(entry.content) { crc.update($0); size += $0.count }
+            let name = Data(entry.name.utf8)
+            var header = Data()
+            u32(0x0403_4b50, &header); u16(20, &header); u16(0, &header); u16(0, &header); u16(0, &header); u16(0x21, &header)
+            u32(crc.value, &header); u32(UInt32(size), &header); u32(UInt32(size), &header)
+            u16(name.count, &header); u16(0, &header); header.append(name)
+            file.write(header)
+            chunks(entry.content) { file.write($0) }
+
+            u32(0x0201_4b50, &directory); u16(20, &directory); u16(20, &directory); u16(0, &directory); u16(0, &directory)
+            u16(0, &directory); u16(0x21, &directory); u32(crc.value, &directory)
+            u32(UInt32(size), &directory); u32(UInt32(size), &directory)
+            u16(name.count, &directory); u16(0, &directory); u16(0, &directory); u16(0, &directory); u16(0, &directory)
+            u32(0, &directory); u32(UInt32(offset), &directory); directory.append(name)
+            offset += header.count + size
+        }
+        var end = Data()
+        u32(0x0605_4b50, &end); u16(0, &end); u16(0, &end); u16(entries.count, &end); u16(entries.count, &end)
+        u32(UInt32(directory.count), &end); u32(UInt32(offset), &end); u16(0, &end)
+        file.write(directory)
+        file.write(end)
+    }
+
+    /// Table-driven CRC-32 (zip's), updated chunk by chunk.
+    private struct CRC32 {
+        private static let table: [UInt32] = (0..<256).map { n -> UInt32 in
+            var c = UInt32(n)
+            for _ in 0..<8 { c = (c & 1) != 0 ? (c >> 1) ^ 0xEDB8_8320 : c >> 1 }
+            return c
+        }
+        private var crc: UInt32 = 0xFFFF_FFFF
+        mutating func update(_ data: Data) {
+            var c = crc
+            data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+                for byte in bytes { c = Self.table[Int((c ^ UInt32(byte)) & 0xFF)] ^ (c >> 8) }
+            }
+            crc = c
+        }
+        var value: UInt32 { ~crc }
     }
 }
