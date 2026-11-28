@@ -13,7 +13,16 @@ final class SelfUpdateSigningTests: XCTestCase {
         guard let path = ProcessInfo.processInfo.environment["CS_FIXTURES"] else { throw XCTSkip("CS_FIXTURES not set") }
         fixtures = URL(fileURLWithPath: path)
         ipa = fixtures.appendingPathComponent("certsigner.ipa")
-        guard FileManager.default.fileExists(atPath: ipa.path) else { throw XCTSkip("no certsigner.ipa fixture") }
+        guard FileManager.default.fileExists(atPath: ipa.path) else {
+            // CI sets this when it downloaded the release IPA: then a missing fixture is a failure,
+            // never a silent skip.
+            if ProcessInfo.processInfo.environment["CS_SELF_UPDATE_REQUIRED"] == "1" { throw MissingFixture() }
+            throw XCTSkip("no certsigner.ipa fixture (no release published yet)")
+        }
+    }
+
+    private struct MissingFixture: Error, CustomStringConvertible {
+        var description: String { "CI supplied the release IPA but certsigner.ipa is missing from the fixtures" }
     }
 
     private final class Lines: @unchecked Sendable {
