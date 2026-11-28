@@ -19,20 +19,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Only "no release published yet" may skip the self-update tests. Any other error
-          # (auth, network, missing asset) fails here instead of producing a green run that
-          # never signed the release IPA.
-          if gh release view latest -R "${{ github.repository }}" --json tagName > /dev/null 2> "$RUNNER_TEMP/release.err"; then
-            gh release download latest -R "${{ github.repository }}" -p CertSigner.ipa -O "$RUNNER_TEMP/fixtures/certsigner.ipa"
-            test -s "$RUNNER_TEMP/fixtures/certsigner.ipa"
+          # Skips the self-update tests only when this repository has never published a release;
+          # API, auth, missing-asset and download errors fail (see the script for the rules).
+          bash .github/scripts/test-fetch-release-ipa.sh
+          result=$(bash .github/scripts/fetch-release-ipa.sh "${{ github.repository }}" "$RUNNER_TEMP/fixtures/certsigner.ipa")
+          echo "Release IPA: $result"
+          if [ "$result" = "required" ]; then
             # The tests and the inspection below now require the self-update outputs.
             echo "TEST_RUNNER_CS_SELF_UPDATE_REQUIRED=1" >> "$GITHUB_ENV"
             echo "CS_SELF_UPDATE_REQUIRED=1" >> "$GITHUB_ENV"
-          elif grep -qi "release not found" "$RUNNER_TEMP/release.err"; then
-            echo "No release published yet: the self-update tests will skip."
-          else
-            cat "$RUNNER_TEMP/release.err"
-            exit 1
           fi
       - name: Generate Xcode project
         run: xcodegen generate

@@ -10,19 +10,25 @@ final class SelfUpdateSigningTests: XCTestCase {
     private var ipa: URL!
 
     override func setUpWithError() throws {
-        guard let path = ProcessInfo.processInfo.environment["CS_FIXTURES"] else { throw XCTSkip("CS_FIXTURES not set") }
+        // CI sets CS_SELF_UPDATE_REQUIRED when it downloaded the release IPA: then any missing
+        // input is a failure, never a silent skip (checked before either skip below).
+        let environment = ProcessInfo.processInfo.environment
+        let required = environment["CS_SELF_UPDATE_REQUIRED"] == "1"
+        guard let path = environment["CS_FIXTURES"] else {
+            if required { throw MissingFixture(what: "CS_FIXTURES is not set") }
+            throw XCTSkip("CS_FIXTURES not set")
+        }
         fixtures = URL(fileURLWithPath: path)
         ipa = fixtures.appendingPathComponent("certsigner.ipa")
         guard FileManager.default.fileExists(atPath: ipa.path) else {
-            // CI sets this when it downloaded the release IPA: then a missing fixture is a failure,
-            // never a silent skip.
-            if ProcessInfo.processInfo.environment["CS_SELF_UPDATE_REQUIRED"] == "1" { throw MissingFixture() }
-            throw XCTSkip("no certsigner.ipa fixture (no release published yet)")
+            if required { throw MissingFixture(what: "certsigner.ipa is missing from \(path)") }
+            throw XCTSkip("no certsigner.ipa fixture (this repository has never published a release)")
         }
     }
 
     private struct MissingFixture: Error, CustomStringConvertible {
-        var description: String { "CI supplied the release IPA but certsigner.ipa is missing from the fixtures" }
+        let what: String
+        var description: String { "CI supplied the release IPA, but \(what)" }
     }
 
     private final class Lines: @unchecked Sendable {
